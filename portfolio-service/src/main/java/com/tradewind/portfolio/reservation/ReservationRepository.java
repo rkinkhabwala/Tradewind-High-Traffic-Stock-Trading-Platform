@@ -55,6 +55,20 @@ class ReservationRepository {
                 .update();
     }
 
+    /** A fill used up {@code amount} of the reservation; the CHECK keeps it from ever going below zero. */
+    void consume(UUID orderId, BigDecimal amount, BigDecimal filledNotional, Instant now) {
+        int updated = jdbc.sql("""
+                        UPDATE reservations SET remaining_amount = remaining_amount - :amount,
+                                                filled_notional = :notional, updated_at = :now
+                        WHERE order_id = :order AND status = 'OPEN'""")
+                .param("amount", amount).param("notional", filledNotional).param("now", Timestamp.from(now))
+                .param("order", orderId)
+                .update();
+        if (updated != 1) {
+            throw new IllegalStateException("No open reservation for order " + orderId);
+        }
+    }
+
     private Optional<Reservation> query(String sql, UUID orderId) {
         return jdbc.sql(sql).param("order", orderId)
                 .query((rs, n) -> new Reservation(
@@ -63,6 +77,7 @@ class ReservationRepository {
                         rs.getString("asset"),
                         rs.getBigDecimal("reserved_amount"),
                         rs.getBigDecimal("remaining_amount"),
+                        rs.getBigDecimal("filled_notional"),
                         Reservation.Status.valueOf(rs.getString("status"))))
                 .optional();
     }

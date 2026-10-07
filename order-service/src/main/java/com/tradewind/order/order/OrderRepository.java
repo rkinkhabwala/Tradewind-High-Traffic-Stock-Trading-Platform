@@ -105,6 +105,42 @@ class OrderRepository {
                 .param("limit", limit).query(UUID.class).list();
     }
 
+    /** What a fill needs to know about the order, locked for the update. */
+    record FillState(OrderStatus status, Quantity filled, BigDecimal fillNotional, int lastExecSeq) {
+    }
+
+    Optional<FillState> lockFillState(UUID id) {
+        return jdbc.sql("SELECT status, filled_qty, fill_notional, last_exec_seq FROM orders WHERE id = :id FOR UPDATE")
+                .param("id", id)
+                .query((rs, n) -> new FillState(OrderStatus.valueOf(rs.getString("status")),
+                        Quantity.of(rs.getBigDecimal("filled_qty")), rs.getBigDecimal("fill_notional"),
+                        rs.getInt("last_exec_seq")))
+                .optional();
+    }
+
+    /** Applies one execution: filled quantity, average price, seq and the (state-machine checked) status. */
+    void applyFill(UUID id, OrderStatus from, OrderStatus to, Quantity filled, Price avgFillPrice,
+                   BigDecimal fillNotional, int seq, Instant now) {
+        OrderStatus.requireTransition(from, to);
+        int updated = jdbc.sql("""
+                        UPDATE orders SET status = :to, filled_qty = :filled, avg_fill_price = :avg,
+                                          fill_notional = :notional, last_exec_seq = :seq, updated_at = :now
+                        WHERE id = :id AND status = :from""")
+                .param("to", to.name()).param("filled", filled.value()).param("avg", avgFillPrice.value())
+                .param("notional", fillNotional).param("seq", seq).param("now", Timestamp.from(now))
+                .param("id", id).param("from", from.name())
+                .update();
+        if (updated != 1) {
+            throw new IllegalStateException("Order " + id + " changed while applying a fill");
+        }
+    }
+
+    boolean markProcessed(UUID eventId, Instant now) {
+        return jdbc.sql("INSERT INTO processed_events (event_id, processed_at) VALUES (:id, :now) ON CONFLICT DO NOTHING")
+                .param("id", eventId).param("now", Timestamp.from(now))
+                .update() == 1;
+    }
+
     void clearReleasePending(UUID id) {
         jdbc.sql("UPDATE orders SET release_pending = FALSE WHERE id = :id").param("id", id).update();
     }

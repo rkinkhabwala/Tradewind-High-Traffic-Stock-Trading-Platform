@@ -1,6 +1,7 @@
 package com.tradewind.portfolio.ledger;
 
 import com.tradewind.portfolio.ledger.LedgerRepository.AccountBalance;
+import com.tradewind.portfolio.position.PositionRepository;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,16 +16,18 @@ import java.util.UUID;
 @RestController
 class BalancesController {
 
-    record PositionBalance(String symbol, String quantity, String reservedQuantity) {
+    record PositionBalance(String symbol, String quantity, String reservedQuantity, String avgCost) {
     }
 
     record AccountBalances(UUID accountId, long cashCents, long cashReservedCents, List<PositionBalance> positions) {
     }
 
     private final LedgerService ledger;
+    private final PositionRepository positionsView;
 
-    BalancesController(LedgerService ledger) {
+    BalancesController(LedgerService ledger, PositionRepository positionsView) {
         this.ledger = ledger;
+        this.positionsView = positionsView;
     }
 
     @GetMapping("/internal/accounts/{accountId}/balances")
@@ -43,7 +46,8 @@ class BalancesController {
         }
         List<PositionBalance> positionList = positions.entrySet().stream()
                 .map(e -> new PositionBalance(e.getKey(), e.getValue()[0].stripTrailingZeros().toPlainString(),
-                        e.getValue()[1].stripTrailingZeros().toPlainString()))
+                        e.getValue()[1].stripTrailingZeros().toPlainString(),
+                        positionsView.find(accountId, e.getKey()).map(p -> p.displayAvgCost().toJson()).orElse(null)))
                 .toList();
         return new AccountBalances(accountId, cash, cashReserved, positionList);
     }

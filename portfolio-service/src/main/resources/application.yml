@@ -16,6 +16,8 @@ spring:
       connection-timeout: 3000
       data-source-properties:
         options: "-c statement_timeout=5000"
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
   mvc:
     problemdetails:
       enabled: true
@@ -25,6 +27,11 @@ spring:
       accept-float-as-int: false
 
 tradewind:
+  portfolio:
+    consumer-group: ${PORTFOLIO_CONSUMER_GROUP:portfolio-service}
+  outbox:
+    poll-interval: 50ms
+    batch-size: 500
   ledger:
     # Optimistic-lock conflicts on balances are retried this many times before answering 503.
     max-attempts: ${LEDGER_MAX_ATTEMPTS:20}

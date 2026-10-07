@@ -16,8 +16,11 @@ Phase 1 (core trading engine) is in progress.
 ## Build and test
 
 ```
-mvn verify
+mvn clean verify
 ```
+
+Build output goes to `<module>/target.nosync/` instead of `target/`: the repository currently sits on an
+iCloud-synced Desktop, and iCloud skips folders ending in `.nosync` (otherwise it duplicates build files mid-build).
 
 Integration tests start their own Postgres and Redis containers with Testcontainers, so Docker must be running.
 

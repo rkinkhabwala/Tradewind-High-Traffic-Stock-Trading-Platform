@@ -28,9 +28,14 @@ public class ReconciliationService {
     public record NegativeBalance(UUID ledgerAccountId, String type, BigDecimal amount) {
     }
 
+    /** positions_view (read model) disagrees with POSITION + POSITION_RESERVED in the ledger. */
+    public record PositionMismatch(UUID accountId, String symbol, BigDecimal readModel, BigDecimal ledger) {
+    }
+
     public record Report(Instant checkedAt, long ledgerAccounts, long transactions, long entries,
                          List<BalanceMismatch> balanceMismatches, List<UnbalancedTxn> unbalancedTransactions,
-                         List<NegativeBalance> negativeBalances, boolean ok) {
+                         List<NegativeBalance> negativeBalances, List<PositionMismatch> positionMismatches,
+                         boolean ok) {
     }
 
     private final JdbcClient jdbc;
@@ -70,11 +75,26 @@ public class ReconciliationService {
                     .query((rs, n) -> new NegativeBalance(rs.getObject(1, UUID.class),
                             rs.getString("type"), rs.getBigDecimal("amount")))
                     .list();
+            List<PositionMismatch> positions = jdbc.sql("""
+                            WITH owned AS (
+                                SELECT a.account_id, a.symbol, sum(b.amount) AS qty
+                                FROM ledger_accounts a JOIN balances b ON b.ledger_account_id = a.id
+                                WHERE a.type IN ('POSITION', 'POSITION_RESERVED')
+                                GROUP BY a.account_id, a.symbol)
+                            SELECT coalesce(p.account_id, o.account_id) AS account_id,
+                                   coalesce(p.symbol, o.symbol) AS symbol,
+                                   coalesce(p.qty, 0) AS read_model, coalesce(o.qty, 0) AS ledger
+                            FROM positions_view p
+                                FULL OUTER JOIN owned o ON o.account_id = p.account_id AND o.symbol = p.symbol
+                            WHERE coalesce(p.qty, 0) <> coalesce(o.qty, 0)""")
+                    .query((rs, n) -> new PositionMismatch(rs.getObject("account_id", UUID.class),
+                            rs.getString("symbol"), rs.getBigDecimal("read_model"), rs.getBigDecimal("ledger")))
+                    .list();
             long accounts = count("SELECT count(*) FROM ledger_accounts");
             long txns = count("SELECT count(*) FROM ledger_txns");
             long entries = count("SELECT count(*) FROM ledger_entries");
-            boolean ok = mismatches.isEmpty() && unbalanced.isEmpty() && negative.isEmpty();
-            return new Report(clock.instant(), accounts, txns, entries, mismatches, unbalanced, negative, ok);
+            boolean ok = mismatches.isEmpty() && unbalanced.isEmpty() && negative.isEmpty() && positions.isEmpty();
+            return new Report(clock.instant(), accounts, txns, entries, mismatches, unbalanced, negative, positions, ok);
         });
     }
 

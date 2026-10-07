@@ -41,9 +41,12 @@ public class TestInfrastructure {
     }
 
     @Bean
-    KafkaContainer kafka() {
+    KafkaContainer kafka() throws Exception {
         KafkaContainer kafka = new KafkaContainer("apache/kafka:4.3.1");
         kafka.start();
+        com.tradewind.common.kafka.KafkaTopics.ensure(kafka.getBootstrapServers(),
+                java.util.List.of(com.tradewind.common.kafka.Topics.ORDERS_SUBMITTED,
+                        com.tradewind.common.kafka.Topics.EXECUTIONS), java.time.Duration.ofSeconds(30));
         return kafka;
     }
 

@@ -10,6 +10,7 @@ public final class EventTypes {
     public static final String ORDER_CANCELED = "OrderCanceled";
     public static final String ORDER_EXPIRED = "OrderExpired";
     public static final String CANCEL_REJECTED = "CancelRejected";
+    public static final String PORTFOLIO_UPDATED = "PortfolioUpdated";
 
     private EventTypes() {
     }

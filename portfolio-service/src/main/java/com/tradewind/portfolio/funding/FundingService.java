@@ -1,6 +1,7 @@
 package com.tradewind.portfolio.funding;
 
 import com.tradewind.common.money.Money;
+import com.tradewind.portfolio.events.PortfolioEvents;
 import com.tradewind.portfolio.ledger.LedgerAccountKey;
 import com.tradewind.portfolio.ledger.LedgerAmounts;
 import com.tradewind.portfolio.ledger.LedgerExceptions.ConflictingReferenceException;
@@ -24,10 +25,12 @@ public class FundingService {
 
     private final LedgerService ledger;
     private final LedgerTransactions transactions;
+    private final PortfolioEvents events;
 
-    FundingService(LedgerService ledger, LedgerTransactions transactions) {
+    FundingService(LedgerService ledger, LedgerTransactions transactions, PortfolioEvents events) {
         this.ledger = ledger;
         this.transactions = transactions;
+        this.events = events;
     }
 
     public FundingResult deposit(UUID referenceId, UUID accountId, Money amount) {
@@ -48,7 +51,9 @@ public class FundingService {
         }
         LedgerTransaction txn = LedgerTransaction.transfer(type, reference, from, to, LedgerAmounts.of(amount));
         return transactions.execute(() -> {
-            if (!ledger.post(txn).applied()) {
+            if (ledger.post(txn).applied()) {
+                events.updated(accountId, type.name(), reference, null);
+            } else {
                 List<Posting> original = ledger.postingsOf(reference).orElseThrow();
                 if (!new HashSet<>(original).equals(new HashSet<>(txn.postings()))) {
                     throw new ConflictingReferenceException("Reference " + referenceId + " was used for a different movement");

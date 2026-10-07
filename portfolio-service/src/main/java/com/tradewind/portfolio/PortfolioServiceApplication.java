@@ -7,11 +7,13 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.Ordered;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.time.Clock;
 
 @SpringBootApplication
 @ConfigurationPropertiesScan
+@EnableScheduling
 public class PortfolioServiceApplication {
 
     public static void main(String[] args) {

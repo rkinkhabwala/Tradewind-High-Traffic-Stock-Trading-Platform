@@ -85,6 +85,9 @@
     </dependencyManagement>
 
     <build>
+        <!-- The project lives on an iCloud-synced Desktop; iCloud skips *.nosync folders. Without this it copies
+             build output mid-build ("classes 2/") and breaks compilation. Remove if the repo moves elsewhere. -->
+        <directory>${project.basedir}/target.nosync</directory>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
