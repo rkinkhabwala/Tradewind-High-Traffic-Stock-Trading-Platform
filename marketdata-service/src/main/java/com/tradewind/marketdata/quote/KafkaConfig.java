@@ -3,7 +3,6 @@ package com.tradewind.marketdata.quote;
 import com.tradewind.common.kafka.KafkaDefaults;
 import com.tradewind.common.kafka.Topics;
 import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.common.config.TopicConfig;
 import org.springframework.boot.autoconfigure.kafka.KafkaConnectionDetails;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,7 +31,7 @@ class KafkaConfig {
         return TopicBuilder.name(Topics.QUOTES_TICKS.name())
                 .partitions(Topics.QUOTES_TICKS.partitions())
                 .replicas(1)
-                .config(TopicConfig.RETENTION_MS_CONFIG, Long.toString(60 * 60 * 1000L))
+                .configs(Topics.configFor(Topics.QUOTES_TICKS))
                 .build();
     }
 }

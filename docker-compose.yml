@@ -1,7 +1,39 @@
 name: tradewind
 
 # Image tags are pinned and were verified with `docker pull` before being written here (spec section 10).
-# Copy .env.example to .env before `docker compose up`.
+# Copy .env.example to .env before `docker compose up --build`. The Java services are built from ./Dockerfile.
+
+# Shared by every Java service: infrastructure addresses (container network), the shared market clock,
+# JSON (ECS) logs, a memory limit the JVM sizes its heap from, and a health check on /actuator/health.
+x-java-service: &java-service
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    kafka:
+      condition: service_healthy
+  deploy:
+    resources:
+      limits:
+        memory: 448m
+
+x-java-env: &java-env
+  POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+  ACCOUNT_SERVICE_URL: http://account-service:8081
+  MARKETDATA_SERVICE_URL: http://marketdata-service:8082
+  ORDER_SERVICE_URL: http://order-service:8083
+  PORTFOLIO_SERVICE_URL: http://portfolio-service:8085
+  MARKET_CLOCK_MODE: ${MARKET_CLOCK_MODE:-FAST}
+  MARKET_CLOCK_SPEED: ${MARKET_CLOCK_SPEED:-1}
+  MARKET_CLOCK_SIM_START: ${MARKET_CLOCK_SIM_START:-2026-01-05T09:29:00-05:00}
+  MARKET_CLOCK_REAL_EPOCH: ${MARKET_CLOCK_REAL_EPOCH:-}
+  LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
 
 services:
   postgres:
@@ -114,6 +146,124 @@ services:
       resources:
         limits:
           memory: 384m
+
+  account-service:
+    <<: *java-service
+    build:
+      context: .
+      target: account-service
+    image: tradewind/account-service:0.1.0
+    ports:
+      - "${ACCOUNT_SERVICE_PORT:-8081}:8081"
+    environment:
+      <<: *java-env
+      ACCOUNT_DB_URL: jdbc:postgresql://postgres:5432/account
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      SEED_DEMO_USERS: "true"
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?set in .env}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+
+  portfolio-service:
+    <<: *java-service
+    build:
+      context: .
+      target: portfolio-service
+    image: tradewind/portfolio-service:0.1.0
+    ports:
+      - "${PORTFOLIO_SERVICE_PORT:-8085}:8085"
+    environment:
+      <<: *java-env
+      PORTFOLIO_DB_URL: jdbc:postgresql://postgres:5432/portfolio
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8085/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+
+  marketdata-service:
+    <<: *java-service
+    build:
+      context: .
+      target: marketdata-service
+    image: tradewind/marketdata-service:0.1.0
+    ports:
+      - "${MARKETDATA_SERVICE_PORT:-8082}:8082"
+    environment:
+      <<: *java-env
+      MARKETDATA_DB_URL: jdbc:postgresql://postgres:5432/marketdata
+      SIMULATOR_HOT_SYMBOL: ${SIMULATOR_HOT_SYMBOL:-}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+
+  order-service:
+    <<: *java-service
+    build:
+      context: .
+      target: order-service
+    image: tradewind/order-service:0.1.0
+    ports:
+      - "${ORDER_SERVICE_PORT:-8083}:8083"
+    environment:
+      <<: *java-env
+      ORDER_DB_URL: jdbc:postgresql://postgres:5432/orders
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+
+  execution-service:
+    <<: *java-service
+    build:
+      context: .
+      target: execution-service
+    image: tradewind/execution-service:0.1.0
+    ports:
+      - "${EXECUTION_SERVICE_PORT:-8084}:8084"
+    environment:
+      <<: *java-env
+      EXECUTION_DB_URL: jdbc:postgresql://postgres:5432/execution
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8084/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+
+  gateway:
+    <<: *java-service
+    build:
+      context: .
+      target: gateway
+    image: tradewind/gateway:0.1.0
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    environment:
+      <<: *java-env
+      ORDER_RATE_LIMIT_PER_SECOND: ${ORDER_RATE_LIMIT_PER_SECOND:-10}
+      ORDER_RATE_LIMIT_BURST: ${ORDER_RATE_LIMIT_BURST:-20}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+    depends_on:
+      redis:
+        condition: service_healthy
+      account-service:
+        condition: service_healthy
 
 volumes:
   postgres-data:

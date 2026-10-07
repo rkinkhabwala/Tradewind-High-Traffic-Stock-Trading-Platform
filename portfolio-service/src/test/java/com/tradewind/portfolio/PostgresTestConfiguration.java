@@ -24,6 +24,12 @@ public class PostgresTestConfiguration {
     }
 
     @Bean
+    @ServiceConnection(name = "redis")
+    org.testcontainers.containers.GenericContainer<?> redis() {
+        return new org.testcontainers.containers.GenericContainer<>("redis:7.4.11").withExposedPorts(6379);
+    }
+
+    @Bean
     KafkaContainer kafka() throws Exception {
         KafkaContainer kafka = new KafkaContainer("apache/kafka:4.3.1");
         kafka.start();

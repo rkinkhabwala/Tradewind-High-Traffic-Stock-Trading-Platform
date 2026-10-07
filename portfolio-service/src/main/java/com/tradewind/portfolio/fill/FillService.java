@@ -4,6 +4,7 @@ import com.tradewind.common.execution.ExecutionReported;
 import com.tradewind.common.money.Money;
 import com.tradewind.common.money.Notional;
 import com.tradewind.common.order.OrderSide;
+import com.tradewind.portfolio.activity.ActivityRepository;
 import com.tradewind.portfolio.events.PortfolioEvents;
 import com.tradewind.portfolio.ledger.LedgerAccountKey;
 import com.tradewind.portfolio.ledger.LedgerAmounts;
@@ -44,16 +45,19 @@ public class FillService {
     private final ReservationService reservations;
     private final PositionRepository positions;
     private final PortfolioEvents events;
+    private final ActivityRepository activity;
     private final JdbcClient jdbc;
     private final Clock clock;
 
     FillService(LedgerService ledger, LedgerTransactions transactions, ReservationService reservations,
-                PositionRepository positions, PortfolioEvents events, JdbcClient jdbc, Clock clock) {
+                PositionRepository positions, PortfolioEvents events, ActivityRepository activity, JdbcClient jdbc,
+                Clock clock) {
         this.ledger = ledger;
         this.transactions = transactions;
         this.reservations = reservations;
         this.positions = positions;
         this.events = events;
+        this.activity = activity;
         this.jdbc = jdbc;
         this.clock = clock;
     }
@@ -104,6 +108,9 @@ public class FillService {
             if (e.terminal()) {
                 reservations.releaseInTransaction(e.orderId());
             }
+            activity.record(account, ActivityRepository.Type.FILL, "fill:" + e.executionId(), symbol, e.side(),
+                    e.qty(), e.price(), e.side() == OrderSide.BUY ? amount.negate() : amount,
+                    clock.instant());   // wall-clock like deposits; executedAt is simulated market time
             events.updated(account, "FILL", "fill:" + e.executionId(), symbol);
             return null;
         });

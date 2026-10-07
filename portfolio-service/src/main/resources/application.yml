@@ -16,6 +16,12 @@ spring:
       connection-timeout: 3000
       data-source-properties:
         options: "-c statement_timeout=5000"
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 500ms
+      connect-timeout: 1s
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
   mvc:

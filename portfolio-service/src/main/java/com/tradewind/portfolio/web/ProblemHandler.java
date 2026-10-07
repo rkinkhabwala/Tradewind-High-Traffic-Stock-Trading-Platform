@@ -39,6 +39,13 @@ class ProblemHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).header(HttpHeaders.RETRY_AFTER, "1").body(problem);
     }
 
+    @ExceptionHandler(Identity.MissingIdentityException.class)
+    ProblemDetail unauthorized(Identity.MissingIdentityException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, e.getMessage());
+        problem.setTitle("Unauthorized");
+        return problem;
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail badRequest(IllegalArgumentException e) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());

@@ -1,6 +1,7 @@
 package com.tradewind.common.kafka;
 
 import java.util.List;
+import java.util.Map;
 
 /** Kafka topics and partition counts (spec section 8). */
 public final class Topics {
@@ -15,6 +16,11 @@ public final class Topics {
     public static final TopicSpec LEDGER_EVENTS = new TopicSpec("ledger.events", 12);
 
     public static final List<TopicSpec> ALL = List.of(QUOTES_TICKS, ORDERS_SUBMITTED, EXECUTIONS, LEDGER_EVENTS);
+
+    /** Ticks are only useful for minutes; the rest keep the broker default. */
+    public static Map<String, String> configFor(TopicSpec topic) {
+        return topic.equals(QUOTES_TICKS) ? Map.of("retention.ms", Long.toString(60 * 60 * 1000L)) : Map.of();
+    }
 
     private Topics() {
     }

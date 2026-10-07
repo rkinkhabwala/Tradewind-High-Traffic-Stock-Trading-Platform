@@ -1,6 +1,7 @@
 package com.tradewind.portfolio.funding;
 
 import com.tradewind.common.money.Money;
+import com.tradewind.portfolio.activity.ActivityRepository;
 import com.tradewind.portfolio.events.PortfolioEvents;
 import com.tradewind.portfolio.ledger.LedgerAccountKey;
 import com.tradewind.portfolio.ledger.LedgerAmounts;
@@ -12,6 +13,7 @@ import com.tradewind.portfolio.ledger.LedgerTxnType;
 import com.tradewind.portfolio.ledger.Posting;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
@@ -26,11 +28,16 @@ public class FundingService {
     private final LedgerService ledger;
     private final LedgerTransactions transactions;
     private final PortfolioEvents events;
+    private final ActivityRepository activity;
+    private final Clock clock;
 
-    FundingService(LedgerService ledger, LedgerTransactions transactions, PortfolioEvents events) {
+    FundingService(LedgerService ledger, LedgerTransactions transactions, PortfolioEvents events,
+                   ActivityRepository activity, Clock clock) {
         this.ledger = ledger;
         this.transactions = transactions;
         this.events = events;
+        this.activity = activity;
+        this.clock = clock;
     }
 
     public FundingResult deposit(UUID referenceId, UUID accountId, Money amount) {
@@ -52,6 +59,8 @@ public class FundingService {
         LedgerTransaction txn = LedgerTransaction.transfer(type, reference, from, to, LedgerAmounts.of(amount));
         return transactions.execute(() -> {
             if (ledger.post(txn).applied()) {
+                activity.record(accountId, ActivityRepository.Type.valueOf(type.name()), reference, null, null, null,
+                        null, type == LedgerTxnType.DEPOSIT ? amount : amount.negate(), clock.instant());
                 events.updated(accountId, type.name(), reference, null);
             } else {
                 List<Posting> original = ledger.postingsOf(reference).orElseThrow();

@@ -4,7 +4,6 @@ import com.tradewind.common.event.EventJson;
 import com.tradewind.common.event.EventTypes;
 import com.tradewind.common.execution.ExecutionReported;
 import com.tradewind.common.kafka.EventConsumerLoop;
-import com.tradewind.common.kafka.KafkaDefaults;
 import com.tradewind.common.kafka.Topics;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.SmartLifecycle;
@@ -21,8 +20,8 @@ class ExecutionsConsumer implements SmartLifecycle {
 
     ExecutionsConsumer(OrderStatusUpdater updater, @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
                        @Value("${tradewind.orders.consumer-group:order-service}") String groupId) {
-        this.loop = new EventConsumerLoop("order-executions", KafkaDefaults.consumer(bootstrapServers, groupId),
-                List.of(Topics.EXECUTIONS.name()), (event, record) -> {
+        this.loop = new EventConsumerLoop("order-executions", bootstrapServers, groupId,
+                List.of(Topics.EXECUTIONS), (event, record) -> {
             switch (event.eventType()) {
                 case EventTypes.EXECUTION_REPORTED ->
                         updater.onExecution(event.eventId(), EventJson.convert(event.payload(), ExecutionReported.class));

@@ -41,6 +41,10 @@ tradewind:
     connect-timeout: 1s
     read-timeout: 3s
     max-amount-cents: ${FUNDING_MAX_AMOUNT_CENTS:100000000}
+  seed:
+    # Phase 1 seed: demo1@tradewind.test and demo2@tradewind.test with $100,000 each (docker-compose turns it on).
+    demo-users: ${SEED_DEMO_USERS:false}
+    demo-password: ${DEMO_USER_PASSWORD:}
 
 management:
   endpoints:

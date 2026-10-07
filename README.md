@@ -1,78 +1,101 @@
 # Tradewind
 
-Robinhood-style paper-trading platform (simulated money and market data). See [spec.md](spec.md).
-Phase 1 (core trading engine) is in progress.
+Robinhood-style **paper-trading** platform: simulated money, simulated market data, no real broker. Built as a
+high-traffic engineering exercise; see [spec.md](spec.md). This README covers **Phase 1** (core trading engine,
+backend only).
 
-## Prerequisites
+## Run it
 
-- **JDK 21.** The build enforces it. On macOS with Homebrew:
-  ```
-  brew install openjdk@21
-  export JAVA_HOME=$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home
-  ```
-- Maven 3.9+
-- Docker (8 GB of memory for Docker recommended)
-
-## Build and test
+Prerequisites: Docker (8 GB of memory for Docker recommended).
 
 ```
-mvn clean verify
+cp .env.example .env              # then change the passwords
+scripts/compose.sh up -d --build  # first run builds the images (a few minutes)
+docker compose ps                 # wait until all 11 services are "healthy"
 ```
 
-Build output goes to `<module>/target.nosync/` instead of `target/`: the repository currently sits on an
-iCloud-synced Desktop, and iCloud skips folders ending in `.nosync` (otherwise it duplicates build files mid-build).
+`scripts/compose.sh` is plain `docker compose` run through an ASCII-named symlink: Docker's builder rejects the
+"—" in this folder's name. Commands that do not build (`docker compose up -d`, `ps`, `logs`, `down`) work directly.
+Stop with `docker compose down` (add `-v` to wipe all data).
 
-Integration tests start their own Postgres and Redis containers with Testcontainers, so Docker must be running.
+Two demo users are seeded with $100,000 each: `demo1@tradewind.test` and `demo2@tradewind.test`, password
+`DEMO_USER_PASSWORD` from `.env`.
 
-## Run locally
+| Service | URL |
+|---|---|
+| Gateway (the public API) | http://localhost:8080 |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 (admin credentials from `.env`) |
+| Reconciliation (internal) | http://localhost:8085/internal/reconciliation |
 
-```
-cp .env.example .env                  # then set the passwords
-docker compose up -d                  # Postgres, Kafka, Redis, Prometheus, Grafana
-set -a; . ./.env; set +a
-mvn -pl portfolio-service spring-boot:run # :8085, ledger (source of truth for money)
-mvn -pl marketdata-service spring-boot:run # :8082, price simulator + quotes/candles
-mvn -pl order-service spring-boot:run      # :8083, order intake, reservation, outbox
-mvn -pl execution-service spring-boot:run  # :8084, fills orders against quotes (single writer per symbol)
-mvn -pl account-service spring-boot:run   # :8081
-mvn -pl gateway spring-boot:run           # :8080, the only public entry point
-```
-
-Every mutating `/api` call needs an `Idempotency-Key` header (except `/api/auth/*`). Retrying with the
-same key returns the original response; reusing it with a different body is a 422.
-
-### Placing orders
+## Try it
 
 ```
-curl -X POST localhost:8080/api/orders -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: my-order-1' -d '{"symbol":"AAPL","side":"BUY","type":"MARKET","qty":"10"}'
-# 202 ACCEPTED (buying power reserved), 422 with "code" if rejected, 503 + Retry-After if the outcome is
-# unknown: retry with the same key and the same order resumes.
-curl -X DELETE localhost:8080/api/orders/$ORDER_ID -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: cancel-1'
-curl "localhost:8080/api/orders?limit=20" -H "Authorization: Bearer $TOKEN"     # newest first, cursor paginated
+G=localhost:8080
+TOKEN=$(curl -s -X POST $G/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"demo1@tradewind.test","password":"change-me-demo"}' | jq -r .accessToken)
+AUTH="Authorization: Bearer $TOKEN"
+
+curl -s -H "$AUTH" "$G/api/quotes?symbols=AAPL,TSLA"
+curl -s -H "$AUTH" "$G/api/symbols/AAPL"
+curl -s -H "$AUTH" "$G/api/symbols/AAPL/candles?interval=5m"
+curl -s -H "$AUTH" "$G/api/search?q=app"
+
+# Every mutating call needs an Idempotency-Key; retrying with the same key returns the original response.
+curl -s -X POST $G/api/orders -H "$AUTH" -H 'Content-Type: application/json' -H 'Idempotency-Key: buy-1' \
+  -d '{"symbol":"AAPL","side":"BUY","type":"MARKET","qty":"10"}'
+curl -s -X POST $G/api/orders -H "$AUTH" -H 'Content-Type: application/json' -H 'Idempotency-Key: buy-2' \
+  -d '{"symbol":"TSLA","side":"BUY","type":"LIMIT","qty":"2","limitPrice":"200.00","timeInForce":"GTC"}'
+curl -s -H "$AUTH" "$G/api/orders?limit=20"
+curl -s -X DELETE -H "$AUTH" -H 'Idempotency-Key: cancel-1' $G/api/orders/<orderId>
+
+curl -s -H "$AUTH" $G/api/portfolio        # cash, buying power, positions with live value and P/L
+curl -s -H "$AUTH" $G/api/activity         # deposits, withdrawals, fills (cursor-paginated)
+curl -s -X POST $G/api/account/deposits -H "$AUTH" -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: dep-1' -d '{"amountCents":500000}'
+
+curl -s localhost:8085/internal/reconciliation   # "ok": true = ledger and cached balances agree exactly
 ```
+
+New users: `POST /api/auth/register {"email","password"}`, then log in and deposit.
 
 ### Simulated market
 
 500 symbols (42 well-known tickers plus generated ones, from `scripts/generate_symbols.py`) follow a geometric
-Brownian motion with jumps, ~2,750 ticks/s in total, only while the simulated market is open (Mon-Fri
-9:30-16:00 New York time). By default simulated time starts at Monday 09:29 the first time a service starts and
-runs at real speed. For demos, speed it up and/or pick a start time:
+Brownian motion with jumps, ~2,750 ticks/s in total, only while the simulated market is open (Mon-Fri 9:30-16:00
+New York time). Simulated time starts at Monday 09:29 the first time the stack starts and runs at real speed, so
+the market opens a minute later and stays open for 6.5 hours. To change it, set in `.env` and restart:
 
 ```
-MARKET_CLOCK_SPEED=60 MARKET_CLOCK_SIM_START=2026-01-05T09:29:00-05:00   # 1 real second = 1 market minute
-docker compose exec redis redis-cli DEL market:clock-anchor              # then restart services to reset time
-SIMULATOR_HOT_SYMBOL=GME                                                  # meme-stock mode
+MARKET_CLOCK_SPEED=60                                  # 1 real second = 1 market minute (a session lasts 6.5 min)
+MARKET_CLOCK_SIM_START=2026-01-05T09:29:00-05:00
+SIMULATOR_HOT_SYMBOL=GME                               # meme-stock mode: 100 ticks/s, 5x volatility
+docker compose exec redis redis-cli DEL market:clock-anchor   # then restart the services to reset market time
 ```
 
-Ledger reconciliation (internal, not exposed through the gateway):
+Outside market hours only GTC limit orders are accepted; DAY orders expire at 16:00.
 
-```
-curl localhost:8085/internal/reconciliation    # "ok": true means cached balances == re-summed ledger
-```
+## Architecture (Phase 1)
 
-| Service | URL |
+| Module | Role |
 |---|---|
-| Gateway (public API) | http://localhost:8080 |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 (credentials from `.env`) |
+| `gateway` | Routing, JWT validation (RS256 via account-service JWKS), identity headers, per-user order rate limit |
+| `account-service` | Register/login/refresh/logout, simulated deposits and withdrawals, demo-user seed |
+| `marketdata-service` | Price simulator, Redis quotes, `quotes.ticks`, 1-minute candles, quote/symbol/search API |
+| `order-service` | Validation, synchronous buying-power reservation (timeout, bulkhead, circuit breaker), idempotency, order state machine, outbox |
+| `execution-service` | Fills market/limit orders against quotes; single writer per symbol; cancels; DAY expiry |
+| `portfolio-service` | Double-entry ledger (source of truth for money), reservations, fills, positions, reconciliation |
+| `tradewind-common` | Event schemas, money types, outbox, idempotency, Kafka helpers, ArchUnit money rule |
+
+Kafka topics (12 partitions each): `quotes.ticks` and `orders.submitted` keyed by symbol, `executions` and
+`ledger.events` keyed by account. Every state change is published through a transactional outbox; every consumer
+is idempotent. Design decisions and trade-offs: `docs/phase-1-notes.md` (end of Phase 1).
+
+## Develop
+
+- **JDK 21** (enforced): `export JAVA_HOME=$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home`
+- Maven 3.9+. `mvn clean verify` runs unit tests and Testcontainers integration tests (Docker must be running).
+- Build output goes to `<module>/target.nosync/` instead of `target/`: this checkout sits on an iCloud-synced
+  Desktop, and iCloud skips `*.nosync` folders (otherwise it duplicates build files mid-build).
+- Run a service from the IDE or `mvn -pl <module> spring-boot:run` against the compose infrastructure
+  (`docker compose up -d postgres kafka redis`); `.env.example` lists every setting with its default.

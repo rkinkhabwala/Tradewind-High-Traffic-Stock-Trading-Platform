@@ -12,10 +12,38 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-/** Creates topics a service owns (broker auto-creation is off). Safe to call repeatedly. */
+/**
+ * Creates topics (broker auto-creation is off). Safe to call repeatedly, by any service: consumers call it before
+ * subscribing, because a consumer that subscribes before its topic exists may not notice the topic for minutes.
+ */
 public final class KafkaTopics {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(KafkaTopics.class);
+
     private KafkaTopics() {
+    }
+
+    /** Retries {@link #ensure} until it succeeds or {@code keepTrying} turns false. Returns whether it succeeded. */
+    public static boolean ensureWithRetry(String bootstrapServers, List<TopicSpec> topics,
+                                          java.util.function.BooleanSupplier keepTrying) {
+        while (keepTrying.getAsBoolean()) {
+            try {
+                ensure(bootstrapServers, topics, Duration.ofSeconds(5));
+                return true;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            } catch (Exception e) {
+                log.warn("Kafka not ready ({}), retrying topic setup", e.toString());
+                try {
+                    Thread.sleep(Duration.ofSeconds(3));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+        }
+        return false;
     }
 
     /** Throws if the broker cannot be reached within {@code timeout}; callers retry later. */
@@ -28,7 +56,8 @@ public final class KafkaTopics {
                 AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, timeoutMs))) {
             for (TopicSpec topic : topics) {
                 try {
-                    admin.createTopics(List.of(new NewTopic(topic.name(), topic.partitions(), (short) 1)))
+                    admin.createTopics(List.of(new NewTopic(topic.name(), topic.partitions(), (short) 1)
+                                    .configs(Topics.configFor(topic))))
                             .all().get(timeoutMs, TimeUnit.MILLISECONDS);
                 } catch (ExecutionException e) {
                     if (!(e.getCause() instanceof TopicExistsException)) {

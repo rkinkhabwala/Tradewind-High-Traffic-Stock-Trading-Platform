@@ -1,0 +1,12 @@
+**/target
+**/target.nosync
+**/* 2
+**/* 2.*
+.git
+.idea
+.vscode
+.env
+*.log
+infra
+docs
+scripts

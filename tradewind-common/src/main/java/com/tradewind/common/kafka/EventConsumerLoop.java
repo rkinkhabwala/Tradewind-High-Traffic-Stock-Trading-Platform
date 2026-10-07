@@ -36,16 +36,19 @@ public final class EventConsumerLoop implements AutoCloseable {
     }
 
     private final String name;
+    private final String bootstrapServers;
     private final Map<String, Object> properties;
-    private final List<String> topics;
+    private final List<TopicSpec> topics;
     private final Handler handler;
     private volatile boolean running;
     private volatile KafkaConsumer<String, String> consumer;
     private Thread thread;
 
-    public EventConsumerLoop(String name, Map<String, Object> properties, List<String> topics, Handler handler) {
+    public EventConsumerLoop(String name, String bootstrapServers, String groupId, List<TopicSpec> topics,
+                             Handler handler) {
         this.name = name;
-        this.properties = properties;
+        this.bootstrapServers = bootstrapServers;
+        this.properties = KafkaDefaults.consumer(bootstrapServers, groupId);
         this.topics = topics;
         this.handler = handler;
     }
@@ -76,9 +79,12 @@ public final class EventConsumerLoop implements AutoCloseable {
     }
 
     private void run() {
+        if (!KafkaTopics.ensureWithRetry(bootstrapServers, topics, () -> running)) {
+            return;
+        }
         try (KafkaConsumer<String, String> kafka = new KafkaConsumer<>(properties)) {
             consumer = kafka;
-            kafka.subscribe(topics);
+            kafka.subscribe(topics.stream().map(TopicSpec::name).toList());
             while (running) {
                 process(kafka, kafka.poll(POLL));
             }

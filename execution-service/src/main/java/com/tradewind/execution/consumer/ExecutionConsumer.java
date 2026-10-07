@@ -5,6 +5,7 @@ import com.tradewind.common.event.EventEnvelope;
 import com.tradewind.common.event.EventJson;
 import com.tradewind.common.event.EventTypes;
 import com.tradewind.common.kafka.KafkaDefaults;
+import com.tradewind.common.kafka.KafkaTopics;
 import com.tradewind.common.kafka.Topics;
 import com.tradewind.common.order.CancelRequested;
 import com.tradewind.common.order.OrderAccepted;
@@ -97,6 +98,10 @@ class ExecutionConsumer implements SmartLifecycle {
     }
 
     private void run() {
+        if (!KafkaTopics.ensureWithRetry(bootstrapServers,
+                List.of(Topics.ORDERS_SUBMITTED, Topics.QUOTES_TICKS, Topics.EXECUTIONS), () -> running)) {
+            return;
+        }
         Map<String, Object> props = KafkaDefaults.consumer(bootstrapServers, groupId);
         props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG, RangeAssignor.class.getName());
         try (KafkaConsumer<String, String> kafka = new KafkaConsumer<>(props)) {
