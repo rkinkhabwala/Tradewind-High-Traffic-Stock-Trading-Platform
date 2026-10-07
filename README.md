@@ -89,12 +89,14 @@ Outside market hours only GTC limit orders are accepted; DAY orders expire at 16
 
 Kafka topics (12 partitions each): `quotes.ticks` and `orders.submitted` keyed by symbol, `executions` and
 `ledger.events` keyed by account. Every state change is published through a transactional outbox; every consumer
-is idempotent. Design decisions and trade-offs: `docs/phase-1-notes.md` (end of Phase 1).
+is idempotent. Design decisions, trade-offs and how each acceptance criterion was verified: [docs/phase-1-notes.md](docs/phase-1-notes.md).
 
 ## Develop
 
 - **JDK 21** (enforced): `export JAVA_HOME=$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home`
-- Maven 3.9+. `mvn clean verify` runs unit tests and Testcontainers integration tests (Docker must be running).
+- Maven 3.9+. `mvn clean verify` runs unit tests, Testcontainers integration tests and the cross-service
+  `correctness-tests` suite (real service jars as processes: idempotency, 1,000-iteration cancel-vs-fill race,
+  kill -9 recovery). About 5 minutes; Docker must be running.
 - Build output goes to `<module>/target.nosync/` instead of `target/`: this checkout sits on an iCloud-synced
   Desktop, and iCloud skips `*.nosync` folders (otherwise it duplicates build files mid-build).
 - Run a service from the IDE or `mvn -pl <module> spring-boot:run` against the compose infrastructure

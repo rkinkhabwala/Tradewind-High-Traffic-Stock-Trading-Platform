@@ -32,6 +32,8 @@ import java.util.function.Supplier;
 @Component
 class RestReservationClient implements ReservationClient {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RestReservationClient.class);
+
     private final RestClient client;
     private final ObjectMapper objectMapper;
     private final CircuitBreaker circuitBreaker;
@@ -128,9 +130,17 @@ class RestReservationClient implements ReservationClient {
             return Bulkhead.decorateSupplier(bulkhead,
                     CircuitBreaker.decorateSupplier(circuitBreaker, withTimeoutsMapped)).get();
         } catch (CallNotPermittedException e) {
-            throw new ReservationUnavailableException("portfolio-service circuit open", e);
+            throw unavailable(new ReservationUnavailableException("portfolio-service circuit open", e));
         } catch (BulkheadFullException e) {
-            throw new ReservationUnavailableException("too many concurrent reservation calls", e);
+            throw unavailable(new ReservationUnavailableException("too many concurrent reservation calls", e));
+        } catch (ReservationUnavailableException e) {
+            throw unavailable(e);
         }
+    }
+
+    private static ReservationUnavailableException unavailable(ReservationUnavailableException e) {
+        log.warn("Reservation call failed, outcome unknown: {}{}", e.getMessage(),
+                e.getCause() == null ? "" : " (" + e.getCause() + ")");
+        return e;
     }
 }

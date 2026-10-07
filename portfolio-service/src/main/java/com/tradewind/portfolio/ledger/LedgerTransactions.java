@@ -20,6 +20,8 @@ import java.util.function.Supplier;
 @Component
 public class LedgerTransactions {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(LedgerTransactions.class);
+
     private final TransactionTemplate transactions;
     private final int maxAttempts;
 
@@ -29,14 +31,21 @@ public class LedgerTransactions {
     }
 
     public <T> T execute(Supplier<T> work) {
+        long started = System.nanoTime();
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                return transactions.execute(status -> work.get());
+                T result = transactions.execute(status -> work.get());
+                if (attempt > 3) {
+                    log.info("Ledger transaction needed {} attempts ({} ms)", attempt,
+                            (System.nanoTime() - started) / 1_000_000);
+                }
+                return result;
             } catch (OptimisticConflictException | ConcurrencyFailureException | DuplicateKeyException e) {
                 // ConcurrencyFailureException covers deadlocks Postgres resolves by aborting one transaction.
                 backoff(attempt);
             }
         }
+        log.warn("Ledger transaction gave up after {} optimistic-lock conflicts", maxAttempts);
         throw new LedgerContentionException();
     }
 
