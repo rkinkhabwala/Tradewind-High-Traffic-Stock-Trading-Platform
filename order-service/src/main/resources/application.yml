@@ -7,6 +7,53 @@ spring:
   threads:
     virtual:
       enabled: true
+  datasource:
+    url: ${ORDER_DB_URL:jdbc:postgresql://localhost:5432/orders}
+    username: ${POSTGRES_USER:tradewind}
+    password: ${POSTGRES_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${ORDER_DB_POOL_SIZE:20}
+      connection-timeout: 3000
+      data-source-properties:
+        options: "-c statement_timeout=5000"
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 500ms
+      connect-timeout: 1s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+  mvc:
+    problemdetails:
+      enabled: true
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+
+tradewind:
+  clock:
+    mode: ${MARKET_CLOCK_MODE:FAST}
+    speed: ${MARKET_CLOCK_SPEED:1}
+    sim-start: ${MARKET_CLOCK_SIM_START:2026-01-05T09:29:00-05:00}
+    real-epoch: ${MARKET_CLOCK_REAL_EPOCH:}
+  portfolio:
+    url: ${PORTFOLIO_SERVICE_URL:http://localhost:8085}
+    connect-timeout: 500ms
+    read-timeout: 1s
+    # Bulkhead: at most this many concurrent reservation calls; extra callers get 503 at once (spec 8).
+    max-concurrent-calls: ${PORTFOLIO_MAX_CONCURRENT_CALLS:64}
+    # Circuit breaker: open at 50% failures (or 80% calls slower than 800ms) over the last 20 calls.
+    failure-rate-threshold-percent: 50
+    slow-call-threshold: 800ms
+    open-state-wait: 5s
+  orders:
+    # PENDING orders older than this are rejected and their reservation released (crash/timeout recovery).
+    pending-timeout: ${ORDER_PENDING_TIMEOUT:30s}
+    sweep-interval: ${ORDER_SWEEP_INTERVAL:5s}
+  outbox:
+    poll-interval: 50ms
+    batch-size: 500
 
 management:
   endpoints:

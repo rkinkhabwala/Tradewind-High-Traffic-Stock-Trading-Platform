@@ -29,12 +29,24 @@ docker compose up -d                  # Postgres, Kafka, Redis, Prometheus, Graf
 set -a; . ./.env; set +a
 mvn -pl portfolio-service spring-boot:run # :8085, ledger (source of truth for money)
 mvn -pl marketdata-service spring-boot:run # :8082, price simulator + quotes/candles
+mvn -pl order-service spring-boot:run      # :8083, order intake, reservation, outbox
 mvn -pl account-service spring-boot:run   # :8081
 mvn -pl gateway spring-boot:run           # :8080, the only public entry point
 ```
 
 Every mutating `/api` call needs an `Idempotency-Key` header (except `/api/auth/*`). Retrying with the
 same key returns the original response; reusing it with a different body is a 422.
+
+### Placing orders
+
+```
+curl -X POST localhost:8080/api/orders -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: my-order-1' -d '{"symbol":"AAPL","side":"BUY","type":"MARKET","qty":"10"}'
+# 202 ACCEPTED (buying power reserved), 422 with "code" if rejected, 503 + Retry-After if the outcome is
+# unknown: retry with the same key and the same order resumes.
+curl -X DELETE localhost:8080/api/orders/$ORDER_ID -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: cancel-1'
+curl "localhost:8080/api/orders?limit=20" -H "Authorization: Bearer $TOKEN"     # newest first, cursor paginated
+```
 
 ### Simulated market
 

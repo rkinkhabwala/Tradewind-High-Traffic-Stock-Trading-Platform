@@ -19,6 +19,9 @@ public final class QuoteHash {
     private QuoteHash() {
     }
 
+    /** Redis set of every tradable symbol, maintained by marketdata-service. */
+    public static final String SYMBOLS_KEY = "symbols";
+
     public static String key(String symbol) {
         return "quote:" + symbol;
     }

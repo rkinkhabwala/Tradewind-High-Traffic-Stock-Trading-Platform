@@ -62,8 +62,10 @@ class MarketDataIntegrationTest {
     JdbcClient jdbc;
 
     @Test
-    void seedsFiveHundredSymbols() {
+    void seedsFiveHundredSymbolsAndPublishesTheDirectory() {
         assertThat(jdbc.sql("SELECT count(*) FROM symbols").query(Long.class).single()).isEqualTo(500);
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                assertThat(redis.opsForSet().size("symbols")).isEqualTo(500));
     }
 
     @Test
