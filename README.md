@@ -30,6 +30,7 @@ set -a; . ./.env; set +a
 mvn -pl portfolio-service spring-boot:run # :8085, ledger (source of truth for money)
 mvn -pl marketdata-service spring-boot:run # :8082, price simulator + quotes/candles
 mvn -pl order-service spring-boot:run      # :8083, order intake, reservation, outbox
+mvn -pl execution-service spring-boot:run  # :8084, fills orders against quotes (single writer per symbol)
 mvn -pl account-service spring-boot:run   # :8081
 mvn -pl gateway spring-boot:run           # :8080, the only public entry point
 ```

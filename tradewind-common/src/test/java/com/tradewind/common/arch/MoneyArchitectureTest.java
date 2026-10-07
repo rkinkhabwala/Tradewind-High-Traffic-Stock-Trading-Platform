@@ -11,5 +11,5 @@ class MoneyArchitectureTest {
 
     @ArchTest
     static final ArchRule noFloatingPointInMoneyPackages =
-            MoneyArchitectureRules.noFloatingPointIn("..money..", "..event..", "..idempotency..", "..quote..", "..order..", "..outbox..");
+            MoneyArchitectureRules.noFloatingPointIn("..money..", "..event..", "..idempotency..", "..quote..", "..order..", "..outbox..", "..execution..");
 }
