@@ -28,12 +28,26 @@ cp .env.example .env                  # then set the passwords
 docker compose up -d                  # Postgres, Kafka, Redis, Prometheus, Grafana
 set -a; . ./.env; set +a
 mvn -pl portfolio-service spring-boot:run # :8085, ledger (source of truth for money)
+mvn -pl marketdata-service spring-boot:run # :8082, price simulator + quotes/candles
 mvn -pl account-service spring-boot:run   # :8081
 mvn -pl gateway spring-boot:run           # :8080, the only public entry point
 ```
 
 Every mutating `/api` call needs an `Idempotency-Key` header (except `/api/auth/*`). Retrying with the
 same key returns the original response; reusing it with a different body is a 422.
+
+### Simulated market
+
+500 symbols (42 well-known tickers plus generated ones, from `scripts/generate_symbols.py`) follow a geometric
+Brownian motion with jumps, ~2,750 ticks/s in total, only while the simulated market is open (Mon-Fri
+9:30-16:00 New York time). By default simulated time starts at Monday 09:29 the first time a service starts and
+runs at real speed. For demos, speed it up and/or pick a start time:
+
+```
+MARKET_CLOCK_SPEED=60 MARKET_CLOCK_SIM_START=2026-01-05T09:29:00-05:00   # 1 real second = 1 market minute
+docker compose exec redis redis-cli DEL market:clock-anchor              # then restart services to reset time
+SIMULATOR_HOT_SYMBOL=GME                                                  # meme-stock mode
+```
 
 Ledger reconciliation (internal, not exposed through the gateway):
 
