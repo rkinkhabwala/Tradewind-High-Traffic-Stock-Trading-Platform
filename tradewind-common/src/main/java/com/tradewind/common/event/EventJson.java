@@ -21,6 +21,8 @@ public final class EventJson {
             .addModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            // Never silently truncate money: 1.5 cents is an error, not 1 cent.
+            .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .build();
 

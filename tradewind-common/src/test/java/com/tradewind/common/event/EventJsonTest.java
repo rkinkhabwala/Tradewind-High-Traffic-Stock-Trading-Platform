@@ -65,6 +65,15 @@ class EventJsonTest {
     }
 
     @Test
+    void fractionalCentsAreRejectedNotTruncated() {
+        String json = EventJson.write(EventEnvelope.of("Sample", 1, "AAPL", PAYLOAD, CLOCK))
+                .replace("\"amount\":12345", "\"amount\":12345.5");
+
+        assertThatThrownBy(() -> EventJson.read(json, SamplePayload.class))
+                .isInstanceOf(java.io.UncheckedIOException.class);
+    }
+
+    @Test
     void envelopeRejectsInvalidMetadata() {
         assertThatThrownBy(() -> EventEnvelope.of("Sample", 0, "AAPL", PAYLOAD, CLOCK))
                 .isInstanceOf(IllegalArgumentException.class);

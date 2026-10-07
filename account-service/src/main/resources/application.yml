@@ -24,6 +24,10 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  jackson:
+    deserialization:
+      # Never silently truncate money: {"amountCents": 1.5} is a 400, not 1 cent.
+      accept-float-as-int: false
 
 tradewind:
   jwt:
@@ -32,6 +36,11 @@ tradewind:
     refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:7d}
     # PKCS#8 PEM RSA private key. Empty = generate an ephemeral key at startup (local dev only).
     private-key: ${JWT_PRIVATE_KEY:}
+  funding:
+    portfolio-url: ${PORTFOLIO_SERVICE_URL:http://localhost:8085}
+    connect-timeout: 1s
+    read-timeout: 3s
+    max-amount-cents: ${FUNDING_MAX_AMOUNT_CENTS:100000000}
 
 management:
   endpoints:

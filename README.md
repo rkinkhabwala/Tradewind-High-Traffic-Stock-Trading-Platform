@@ -27,8 +27,18 @@ Integration tests start their own Postgres and Redis containers with Testcontain
 cp .env.example .env                  # then set the passwords
 docker compose up -d                  # Postgres, Kafka, Redis, Prometheus, Grafana
 set -a; . ./.env; set +a
+mvn -pl portfolio-service spring-boot:run # :8085, ledger (source of truth for money)
 mvn -pl account-service spring-boot:run   # :8081
 mvn -pl gateway spring-boot:run           # :8080, the only public entry point
+```
+
+Every mutating `/api` call needs an `Idempotency-Key` header (except `/api/auth/*`). Retrying with the
+same key returns the original response; reusing it with a different body is a 422.
+
+Ledger reconciliation (internal, not exposed through the gateway):
+
+```
+curl localhost:8085/internal/reconciliation    # "ok": true means cached balances == re-summed ledger
 ```
 
 | Service | URL |
