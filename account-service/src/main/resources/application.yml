@@ -7,6 +7,31 @@ spring:
   threads:
     virtual:
       enabled: true
+  datasource:
+    url: ${ACCOUNT_DB_URL:jdbc:postgresql://localhost:5432/account}
+    username: ${POSTGRES_USER:tradewind}
+    password: ${POSTGRES_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${ACCOUNT_DB_POOL_SIZE:10}
+      connection-timeout: 3000
+      data-source-properties:
+        # Every query is bounded; a stuck statement fails instead of pinning a connection.
+        options: "-c statement_timeout=5000"
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  mvc:
+    problemdetails:
+      enabled: true
+
+tradewind:
+  jwt:
+    issuer: ${JWT_ISSUER:tradewind-account}
+    access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:15m}
+    refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:7d}
+    # PKCS#8 PEM RSA private key. Empty = generate an ephemeral key at startup (local dev only).
+    private-key: ${JWT_PRIVATE_KEY:}
 
 management:
   endpoints:

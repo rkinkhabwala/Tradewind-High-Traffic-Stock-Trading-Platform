@@ -4,6 +4,58 @@ server:
 spring:
   application:
     name: gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 500ms
+      connect-timeout: 1s
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 5s
+          # Route order matters: the rate-limited POST /api/orders route must precede the general orders route.
+          routes:
+            - id: auth
+              uri: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/auth/**
+            - id: account
+              uri: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/account/**
+            - id: marketdata
+              uri: ${MARKETDATA_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/quotes/**,/api/symbols/**,/api/search/**
+            - id: orders-place
+              uri: ${ORDER_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/orders
+                - Method=POST
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    # Per-user token bucket in Redis (spec 6.3: 10 orders/sec, burst 20). Keyed by JWT subject.
+                    redis-rate-limiter.replenishRate: ${ORDER_RATE_LIMIT_PER_SECOND:10}
+                    redis-rate-limiter.burstCapacity: ${ORDER_RATE_LIMIT_BURST:20}
+                    redis-rate-limiter.requestedTokens: 1
+            - id: orders
+              uri: ${ORDER_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/orders/**
+            - id: portfolio
+              uri: ${PORTFOLIO_SERVICE_URL:http://localhost:8085}
+              predicates:
+                - Path=/api/portfolio/**,/api/activity/**
+
+tradewind:
+  jwt:
+    issuer: ${JWT_ISSUER:tradewind-account}
+    jwk-set-uri: ${ACCOUNT_SERVICE_URL:http://localhost:8081}/.well-known/jwks.json
 
 management:
   endpoints:

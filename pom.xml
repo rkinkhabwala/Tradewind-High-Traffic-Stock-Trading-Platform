@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.6</version>
+        <version>3.5.16</version>
         <relativePath/>
     </parent>
 
@@ -32,11 +32,12 @@
         <java.version>21</java.version>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring-cloud.version>2025.0.0</spring-cloud.version>
-        <testcontainers.version>1.21.3</testcontainers.version>
+        <spring-cloud.version>2025.0.3</spring-cloud.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
         <archunit.version>1.4.1</archunit.version>
         <jqwik.version>1.9.3</jqwik.version>
-        <logstash-logback.version>8.1</logstash-logback.version>
+        <!-- Same version Spring Security 6.5 resolves, so issuer (account) and verifier (gateway) match. -->
+        <nimbus-jose-jwt.version>9.37.4</nimbus-jose-jwt.version>
     </properties>
 
     <dependencyManagement>
@@ -71,19 +72,42 @@
                 <version>${archunit.version}</version>
             </dependency>
             <dependency>
+                <groupId>com.nimbusds</groupId>
+                <artifactId>nimbus-jose-jwt</artifactId>
+                <version>${nimbus-jose-jwt.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>net.jqwik</groupId>
                 <artifactId>jqwik</artifactId>
                 <version>${jqwik.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>net.logstash.logback</groupId>
-                <artifactId>logstash-logback-encoder</artifactId>
-                <version>${logstash-logback.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
 
     <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>require-java-21</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <!-- Spec: Java 21. Newer JDKs also break ArchUnit's class-file reader. -->
+                                    <version>[21,22)</version>
+                                    <message>Build with JDK 21, e.g. export JAVA_HOME=$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home</message>
+                                </requireJavaVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
         <pluginManagement>
             <plugins>
                 <plugin>
