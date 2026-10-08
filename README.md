@@ -164,3 +164,9 @@ screen within 1 s (20 orders; p50/p95/max are printed and the test passes only i
 killed instance reconnect elsewhere within 5 s (the measured time is printed). Results also go to
 `web/test-results.nosync/phase2-acceptance.json`. If the simulated market is closed the setup says so; run
 `scripts/next-market-open.sh` first.
+
+### Load tests (Phase 3)
+
+Gatling simulations and the post-run correctness checker live in `load-tests/`; see
+[load-tests/README.md](load-tests/README.md). `scripts/load.sh setup` once, then
+`scripts/load.sh <SimulationName>`.
