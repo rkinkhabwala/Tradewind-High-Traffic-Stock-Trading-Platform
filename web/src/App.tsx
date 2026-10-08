@@ -8,6 +8,10 @@ import { AppLayout } from './layout/AppLayout';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { OrdersPage } from './pages/OrdersPage';
+import { SymbolPage } from './pages/SymbolPage';
+import { OrderToasts } from './toast/OrderToasts';
+import { ToastProvider } from './toast/ToastProvider';
 import { RegisterPage } from './pages/RegisterPage';
 
 export const routes: RouteObject[] = [
@@ -21,6 +25,8 @@ export const routes: RouteObject[] = [
     ),
     children: [
       { index: true, element: <HomePage /> },
+      { path: 'stocks/:symbol', element: <SymbolPage /> },
+      { path: 'orders', element: <OrdersPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },
@@ -47,7 +53,10 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <RealtimeProvider>
-          <RouterProvider router={router} />
+          <ToastProvider>
+            <OrderToasts />
+            <RouterProvider router={router} />
+          </ToastProvider>
         </RealtimeProvider>
       </AuthProvider>
     </QueryClientProvider>

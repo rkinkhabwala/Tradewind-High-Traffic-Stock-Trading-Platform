@@ -81,6 +81,12 @@
   margin: 0 0 var(--space-3);
 }
 
+.sideTitle + .sideTitle,
+.positions + .sideTitle,
+.muted + .sideTitle {
+  margin-top: var(--space-5);
+}
+
 .positions {
   list-style: none;
   margin: 0;
@@ -88,6 +94,7 @@
 }
 
 .position {
+  text-decoration: none;
   display: flex;
   justify-content: space-between;
   align-items: center;

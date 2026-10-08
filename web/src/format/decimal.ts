@@ -59,3 +59,43 @@ export function formatPercent(part: number, base: number): string {
 export function formatQty(qty: string): string {
   return qty.includes('.') ? qty.replace(/\.?0+$/, '') : qty;
 }
+
+/** A scaled BigInt back to a plain decimal string with exactly {@code scale} places. */
+export function formatScaled(value: bigint, scale: number): string {
+  const negative = value < 0n;
+  const digits = (negative ? -value : value).toString().padStart(scale + 1, '0');
+  const whole = digits.slice(0, digits.length - scale);
+  const fraction = digits.slice(digits.length - scale);
+  return `${negative ? '-' : ''}${whole}${scale > 0 ? `.${fraction}` : ''}`;
+}
+
+/** "12.5" -> 1250 cents; null if not a plain amount with at most 2 decimals. */
+export function parseDollarsToCents(input: string): number | null {
+  if (!/^\d+(\.\d{0,2})?$/.test(input.trim())) {
+    return null;
+  }
+  return Number(parseScaled(input.trim().replace(/\.$/, ''), 2));
+}
+
+/**
+ * Shares a dollar amount buys at {@code price}, rounded DOWN to 6 decimal places (never more than the amount).
+ * Client-side estimate: the order is placed for this quantity, and the fill price decides the final cost.
+ */
+export function sharesForDollars(cents: number, price: string): string {
+  const price4 = parseScaled(price, PRICE_SCALE);
+  if (price4 <= 0n) {
+    throw new RangeError('price must be positive');
+  }
+  // qty = (cents / 100) / (price4 / 10^4); at scale 6: cents x 10^8 / price4, floored
+  return formatScaled((BigInt(cents) * 10n ** 8n) / price4, QTY_SCALE);
+}
+
+/** A valid order quantity: positive, at most 6 decimal places. */
+export function isValidQty(qty: string): boolean {
+  return /^\d+(\.\d{1,6})?$/.test(qty) && parseScaled(qty, QTY_SCALE) > 0n;
+}
+
+/** A valid limit price: positive whole cents (the server rejects sub-cent limits). */
+export function isValidLimitPrice(price: string): boolean {
+  return /^\d+(\.\d{1,2})?$/.test(price) && parseScaled(price, 2) > 0n;
+}

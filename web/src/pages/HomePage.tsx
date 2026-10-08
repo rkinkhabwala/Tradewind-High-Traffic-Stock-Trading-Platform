@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router';
 import { api } from '../api/client';
 import { formatPercent, formatQty } from '../format/decimal';
 import { formatCents, formatPrice } from '../format/money';
 import { chartPoints } from '../portfolio/history';
-import type { HistoryRange, HistoryView, PortfolioView } from '../portfolio/types';
+import { usePortfolio } from '../portfolio/queries';
+import type { HistoryRange, HistoryView } from '../portfolio/types';
 import { valuate } from '../portfolio/valuation';
 import { ValueChart } from '../portfolio/ValueChart';
 import { useQuotes } from '../realtime/RealtimeProvider';
+import { Watchlists } from '../watchlist/Watchlists';
 import styles from './HomePage.module.css';
 
 const RANGES: HistoryRange[] = ['1D', '1W', '1M', '1Y'];
@@ -18,10 +21,7 @@ function signClass(cents: number | null): string {
 
 export function HomePage() {
   const [range, setRange] = useState<HistoryRange>('1D');
-  const portfolio = useQuery({
-    queryKey: ['portfolio'],
-    queryFn: ({ signal }) => api<PortfolioView>('/api/portfolio', { signal }),
-  });
+  const portfolio = usePortfolio();
   const history = useQuery({
     queryKey: ['portfolio-history', range],
     queryFn: ({ signal }) => api<HistoryView>(`/api/portfolio/history?range=${range}`, { signal }),
@@ -87,23 +87,27 @@ export function HomePage() {
         ) : (
           <ul className={styles.positions}>
             {valuation.positions.map((position) => (
-              <li key={position.symbol} className={styles.position} data-testid={`position-${position.symbol}`}>
-                <div>
-                  <div className={styles.symbol}>{position.symbol}</div>
-                  <div className={styles.qty}>{formatQty(position.qty)} shares</div>
-                </div>
-                <div className={styles.numbers}>
-                  <div>{position.last ? formatPrice(position.last) : '—'}</div>
-                  <div className={`${styles.qty} ${signClass(position.dayChangeCents)}`}>
-                    {position.dayChangeCents === null || position.valueCents === null
-                      ? '—'
-                      : formatPercent(position.dayChangeCents, position.valueCents - position.dayChangeCents)}
+              <li key={position.symbol} data-testid={`position-${position.symbol}`}>
+                <Link to={`/stocks/${position.symbol}`} className={styles.position}>
+                  <div>
+                    <div className={styles.symbol}>{position.symbol}</div>
+                    <div className={styles.qty}>{formatQty(position.qty)} shares</div>
                   </div>
-                </div>
+                  <div className={styles.numbers}>
+                    <div>{position.last ? formatPrice(position.last) : '—'}</div>
+                    <div className={`${styles.qty} ${signClass(position.dayChangeCents)}`}>
+                      {position.dayChangeCents === null || position.valueCents === null
+                        ? '—'
+                        : formatPercent(position.dayChangeCents, position.valueCents - position.dayChangeCents)}
+                    </div>
+                  </div>
+                </Link>
               </li>
             ))}
           </ul>
         )}
+        <h2 className={styles.sideTitle}>Lists</h2>
+        <Watchlists />
       </aside>
     </div>
   );

@@ -15,11 +15,11 @@ const clock = new Intl.DateTimeFormat('en-US', { timeZone: MARKET_ZONE, hour: 'n
 const day = new Intl.DateTimeFormat('en-US', { timeZone: MARKET_ZONE, month: 'short', day: 'numeric' });
 const month = new Intl.DateTimeFormat('en-US', { timeZone: MARKET_ZONE, month: 'short' });
 const year = new Intl.DateTimeFormat('en-US', { timeZone: MARKET_ZONE, year: 'numeric' });
-const full = new Intl.DateTimeFormat('en-US', { timeZone: MARKET_ZONE, month: 'short', day: 'numeric',
+export const full = new Intl.DateTimeFormat('en-US', { timeZone: MARKET_ZONE, month: 'short', day: 'numeric',
   hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
-const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+export const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
-const asDate = (time: Time) => new Date((time as number) * 1000);
+export const asDate = (time: Time) => new Date((time as number) * 1000);
 
 export function tickLabel(time: Time, type: TickMarkType): string {
   const date = asDate(time);
@@ -35,7 +35,7 @@ export function tickLabel(time: Time, type: TickMarkType): string {
   }
 }
 
-function cssVar(name: string): string {
+export function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
 }
 
@@ -57,7 +57,7 @@ export function ValueChart({ points, positive, height = 260 }: { points: ChartPo
         attributionLogo: false },
       localization: { timeFormatter: (time: Time) => full.format(asDate(time)), priceFormatter: (v: number) => dollars.format(v) },
       grid: { vertLines: { visible: false }, horzLines: { visible: false } },
-      rightPriceScale: { borderVisible: false },
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } },
       timeScale: { borderVisible: false, timeVisible: true, secondsVisible: false, tickMarkFormatter: tickLabel },
       crosshair: { horzLine: { visible: false } },
       handleScroll: false,
