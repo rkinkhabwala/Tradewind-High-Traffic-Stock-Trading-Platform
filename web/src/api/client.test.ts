@@ -97,3 +97,30 @@ describe('api client', () => {
     expect(getAccessToken()).toBe('next');
   });
 });
+
+describe('refresh across tabs', () => {
+  it('holds the cross-tab lock for the whole refresh request', async () => {
+    const events: string[] = [];
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      locks: {
+        request: async (name: string, task: () => Promise<unknown>) => {
+          events.push(`lock ${name}`);
+          const result = await task();
+          events.push('unlock');
+          return result;
+        },
+      },
+    });
+    fakeFetch({
+      'POST /api/auth/refresh': () => {
+        events.push('refresh');
+        return json(200, token('t'));
+      },
+    });
+    const { refreshSession } = await import('./client');
+
+    expect(await refreshSession()).toBe(true);
+    expect(events).toEqual(['lock tradewind-auth-refresh', 'refresh', 'unlock']);
+  });
+});

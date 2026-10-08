@@ -1,2 +1,4 @@
 node_modules
 dist.nosync
+test-results.nosync
+e2e

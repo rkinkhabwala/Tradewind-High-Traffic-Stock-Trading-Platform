@@ -7,6 +7,10 @@
  * - A 401 triggers one refresh, shared by all concurrent requests, and a single retry. If the refresh fails the
  *   session is over and listeners are told (the app goes to the login page).
  * - The access token is also refreshed shortly before it expires, so requests rarely hit a 401 at all.
+ * - Refreshes are serialized across all tabs of the app (Web Locks API). The cookie rotates on every refresh, so
+ *   two tabs refreshing at once would send the same cookie: one would be logged out, and a stale cookie sent later
+ *   counts as token theft on the server (every session revoked). Under the lock, a tab only refreshes after the
+ *   previous tab's response has stored the new cookie.
  * - Mutations carry an Idempotency-Key; the retry after a refresh reuses it, so it can never act twice.
  * - Errors are RFC 7807 problem documents, surfaced as ApiError with the server's `code` when present.
  */
@@ -69,11 +73,20 @@ interface TokenResponse {
   expiresIn: number;
 }
 
-/** Exchanges the refresh cookie for a new access token. Concurrent callers share one request. */
+export const REFRESH_LOCK = 'tradewind-auth-refresh';
+
+/** Runs {@code task} holding the cross-tab refresh lock (directly if the browser has no Web Locks). */
+function withRefreshLock<T>(task: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  return locks ? locks.request(REFRESH_LOCK, task) : task();
+}
+
+/** Exchanges the refresh cookie for a new access token. Concurrent callers (and tabs) share or queue for one. */
 export function refreshSession(): Promise<boolean> {
   refreshing ??= (async () => {
     try {
-      const response = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' });
+      const response = await withRefreshLock(() =>
+        fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' }));
       if (!response.ok) {
         clearSession();
         return false;

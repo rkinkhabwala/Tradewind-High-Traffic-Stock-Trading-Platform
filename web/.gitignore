@@ -1,3 +1,5 @@
 node_modules
 dist.nosync
 *.tsbuildinfo
+test-results.nosync
+playwright-report
