@@ -65,6 +65,45 @@ class MarketSimulatorTest {
     }
 
     @Test
+    void aRateBoostMultipliesTicksForItsDurationThenRevertsOnItsOwn() {
+        TickRate rate = new TickRate();
+        MarketSimulator simulator = new MarketSimulator(symbols("AAPL", "MSFT", "TSLA", "AMZN"), Map.of(), clock,
+                List.of(received::addAll), properties(10, 10, ""), 0, rate);
+
+        run(simulator, 10);                                   // 4 symbols x 10/s: ~400
+        int normal = received.size();
+        received.clear();
+        rate.boost(4, Duration.ofSeconds(10), 10 * SECOND);
+        long start = 10 * SECOND;
+        for (long t = start; t <= start + 10 * SECOND; t += 5_000_000L) {
+            marketNow.updateAndGet(i -> i.plusNanos(5_000_000L));
+            simulator.runOnce(t);
+        }
+        int boosted = received.size();
+        received.clear();
+        for (long t = start + 10 * SECOND; t <= start + 20 * SECOND; t += 5_000_000L) {   // boost over
+            marketNow.updateAndGet(i -> i.plusNanos(5_000_000L));
+            simulator.runOnce(t);
+        }
+
+        assertThat(normal).isBetween(340, 460);
+        assertThat(boosted).isBetween(normal * 3, normal * 5);   // ~4x
+        assertThat(received.size()).isBetween(340, 460);
+        assertThat(rate.multiplier(start + 20 * SECOND)).isEqualTo(1);
+    }
+
+    @Test
+    void boostsAreBounded() {
+        TickRate rate = new TickRate();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> rate.boost(11, Duration.ofSeconds(1), 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> rate.boost(2, Duration.ofMinutes(11), 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> rate.boost(0.5, Duration.ofSeconds(1), 0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void noTicksWhileTheMarketIsClosed() {
         marketNow.set(SATURDAY_NOON);
         MarketSimulator simulator = new MarketSimulator(symbols("AAPL"), Map.of(), clock,

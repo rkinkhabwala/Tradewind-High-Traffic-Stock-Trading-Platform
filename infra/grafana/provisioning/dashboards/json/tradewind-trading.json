@@ -635,6 +635,48 @@
       "id": 10
     },
     {
+      "type": "stat",
+      "title": "Healthy order-service instances (gateway view)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "w": 6,
+        "h": 8,
+        "x": 12,
+        "y": 32
+      },
+      "targets": [
+        {
+          "expr": "max(gateway_instances_healthy{service=\"order-service\"})",
+          "legendFormat": "healthy",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "id": 11
+    },
+    {
       "type": "timeseries",
       "title": "HTTP 5xx/sec by service",
       "description": "",
@@ -645,8 +687,8 @@
       "gridPos": {
         "w": 12,
         "h": 8,
-        "x": 12,
-        "y": 32
+        "x": 0,
+        "y": 40
       },
       "targets": [
         {
@@ -685,7 +727,7 @@
           "mode": "multi"
         }
       },
-      "id": 11
+      "id": 12
     }
   ]
 }

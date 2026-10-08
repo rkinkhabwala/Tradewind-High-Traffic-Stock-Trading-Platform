@@ -35,7 +35,7 @@ Postgres credentials come from the repository's `.env`.
 ## Correctness check
 
 After every run (spec 8 "correctness under load"), once the system is quiet (outboxes drained, no consumer lag on
-order/execution topics, no PENDING orders):
+order/execution topics, no PENDING orders, no reservation release still being retried; waits up to 10 minutes):
 
 - **0 lost orders:** every order past PENDING is known to execution-service (resting or closed) with the same
   outcome; rejected orders never reached it.

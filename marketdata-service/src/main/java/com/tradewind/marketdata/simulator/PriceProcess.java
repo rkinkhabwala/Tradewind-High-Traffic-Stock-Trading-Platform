@@ -48,6 +48,12 @@ final class PriceProcess {
     }
 
     SimulatedTick tick(Instant marketNow, LocalDate session, Instant sessionOpen, long nowNanos, SimulatorProperties p) {
+        return tick(marketNow, session, sessionOpen, nowNanos, p, 1);
+    }
+
+    /** {@code speedup} > 1 shortens the interval to the next tick (TickRate boost). */
+    SimulatedTick tick(Instant marketNow, LocalDate session, Instant sessionOpen, long nowNanos, SimulatorProperties p,
+                       double speedup) {
         if (sessionDate == null) {
             sessionDate = session;
         } else if (!session.equals(sessionDate)) {
@@ -63,7 +69,7 @@ final class PriceProcess {
         // Schedule from the previous due time, not from "now": otherwise every tick loses up to one loop period
         // and fast symbols fall well short of their rate. After a long stall, restart instead of bursting.
         long base = nowNanos - nextTickNanos > 1_000_000_000L ? nowNanos : nextTickNanos;
-        nextTickNanos = base + (long) (meanIntervalNanos * (0.5 + random.nextDouble()));
+        nextTickNanos = base + (long) (meanIntervalNanos * (0.5 + random.nextDouble()) / speedup);
 
         SimulatedTick tick = new SimulatedTick(QuoteFactory.quote(symbol, price, p.spreadBps(),
                 100L * (1 + random.nextInt(20)), 100L * (1 + random.nextInt(20)), 1 + random.nextInt(500), marketNow),

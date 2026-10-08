@@ -83,7 +83,7 @@
       },
       "targets": [
         {
-          "expr": "max(gateway_stream_instances_healthy)",
+          "expr": "max(gateway_instances_healthy{service=\"stream-service\"})",
           "legendFormat": "healthy",
           "datasource": {
             "type": "prometheus",

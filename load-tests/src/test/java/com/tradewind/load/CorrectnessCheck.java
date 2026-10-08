@@ -33,7 +33,7 @@ import java.util.stream.Collectors;
 
 /**
  * "Correctness under load" (spec 8): run after every load run. Waits until the system is quiet (outboxes drained,
- * no consumer lag on the order/execution topics, no PENDING orders), then cross-checks the three services' books:
+ * no consumer lag on the order/execution topics, no PENDING orders, no reservation release still being retried), then cross-checks the three services' books:
  * <ul>
  *   <li><b>0 lost orders:</b> every order that got past PENDING is known to execution-service, resting or closed,
  *   and agrees on its outcome; rejected orders never reached it.</li>
@@ -49,7 +49,7 @@ public final class CorrectnessCheck {
     public record Result(boolean ok, Map<String, Object> facts, List<String> problems) {
     }
 
-    private static final Duration QUIET_TIMEOUT = Duration.ofMinutes(3);
+    private static final Duration QUIET_TIMEOUT = Duration.ofMinutes(10);
     private static final Set<String> TERMINAL = Set.of("FILLED", "CANCELED", "EXPIRED", "REJECTED");
     private static final Set<String> OPEN = Set.of("ACCEPTED", "PARTIALLY_FILLED");
 
@@ -89,11 +89,13 @@ public final class CorrectnessCheck {
                     + count(execution, "SELECT count(*) FROM outbox WHERE published_at IS NULL")
                     + count(portfolio, "SELECT count(*) FROM outbox WHERE published_at IS NULL");
             long pending = count(orders, "SELECT count(*) FROM orders WHERE status = 'PENDING'");
+            // Rejected-after-timeout orders whose reservation release is still being retried (order-service sweeper).
+            long releasing = count(orders, "SELECT count(*) FROM orders WHERE release_pending");
             long lag = consumerLag();
-            if (outbox == 0 && pending == 0 && lag == 0) {
+            if (outbox == 0 && pending == 0 && releasing == 0 && lag == 0) {
                 return Duration.ofNanos(System.nanoTime() - start);
             }
-            last = "outbox=" + outbox + " pending=" + pending + " lag=" + lag;
+            last = "outbox=" + outbox + " pending=" + pending + " releasing=" + releasing + " lag=" + lag;
             Thread.sleep(1000);
         }
         throw new IllegalStateException("system not quiet after " + QUIET_TIMEOUT + ": " + last);

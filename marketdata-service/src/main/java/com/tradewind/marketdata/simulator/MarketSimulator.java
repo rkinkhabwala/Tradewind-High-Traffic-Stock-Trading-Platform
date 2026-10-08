@@ -28,9 +28,16 @@ public class MarketSimulator {
     private final MarketClock clock;
     private final List<TickSink> sinks;
     private final SimulatorProperties properties;
+    private final TickRate rate;
 
     public MarketSimulator(Collection<SymbolInfo> symbols, Map<String, StoredQuote> stored, MarketClock clock,
                            List<TickSink> sinks, SimulatorProperties properties, long nowNanos) {
+        this(symbols, stored, clock, sinks, properties, nowNanos, new TickRate());
+    }
+
+    public MarketSimulator(Collection<SymbolInfo> symbols, Map<String, StoredQuote> stored, MarketClock clock,
+                           List<TickSink> sinks, SimulatorProperties properties, long nowNanos, TickRate tickRate) {
+        this.rate = tickRate;
         this.clock = clock;
         this.sinks = List.copyOf(sinks);
         this.properties = properties;
@@ -58,10 +65,11 @@ public class MarketSimulator {
         LocalDate session = marketTime.withZoneSameInstant(MarketHours.ZONE).toLocalDate();
         Instant sessionOpen = session.atTime(MarketHours.OPEN).atZone(MarketHours.ZONE).toInstant();
 
+        double speedup = rate.multiplier(nowNanos);
         List<SimulatedTick> batch = new ArrayList<>();
         for (PriceProcess process : processes) {
             if (process.due(nowNanos)) {
-                batch.add(process.tick(now, session, sessionOpen, nowNanos, properties));
+                batch.add(process.tick(now, session, sessionOpen, nowNanos, properties, speedup));
             }
         }
         if (!batch.isEmpty()) {

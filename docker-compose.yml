@@ -27,7 +27,6 @@ x-java-env: &java-env
   KAFKA_BOOTSTRAP_SERVERS: kafka:19092
   ACCOUNT_SERVICE_URL: http://account-service:8081
   MARKETDATA_SERVICE_URL: http://marketdata-service:8082
-  ORDER_SERVICE_URL: http://order-service:8083
   PORTFOLIO_SERVICE_URL: http://portfolio-service:8085
   MARKET_CLOCK_MODE: ${MARKET_CLOCK_MODE:-FAST}
   MARKET_CLOCK_SPEED: ${MARKET_CLOCK_SPEED:-1}
@@ -229,8 +228,8 @@ services:
       context: .
       target: order-service
     image: tradewind/order-service:0.1.0
-    ports:
-      - "${ORDER_SERVICE_PORT:-8083}:8083"
+    # No host port: reached through the gateway (round-robin over healthy instances), so it can be scaled with
+    # `--scale order-service=2` (spec section 8).
     environment:
       <<: *java-env
       ORDER_DB_URL: jdbc:postgresql://postgres:5432/orders
@@ -304,6 +303,7 @@ services:
       ORDER_RATE_LIMIT_PER_SECOND: ${ORDER_RATE_LIMIT_PER_SECOND:-10}
       ORDER_RATE_LIMIT_BURST: ${ORDER_RATE_LIMIT_BURST:-20}
       STREAM_SERVICE_HOST: stream-service
+      ORDER_SERVICE_HOST: order-service
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
       interval: 10s

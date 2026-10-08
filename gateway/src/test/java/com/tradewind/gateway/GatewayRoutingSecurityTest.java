@@ -44,10 +44,11 @@ class GatewayRoutingSecurityTest {
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("ACCOUNT_SERVICE_URL", DOWNSTREAM::baseUrl);
         registry.add("MARKETDATA_SERVICE_URL", DOWNSTREAM::baseUrl);
-        registry.add("ORDER_SERVICE_URL", DOWNSTREAM::baseUrl);
+        registry.add("tradewind.discovery.services.order-service.host", () -> "localhost");
+        registry.add("tradewind.discovery.services.order-service.port", DOWNSTREAM::port);
         registry.add("PORTFOLIO_SERVICE_URL", DOWNSTREAM::baseUrl);
-        registry.add("tradewind.stream.discovery.host", () -> "localhost");
-        registry.add("tradewind.stream.discovery.port", DOWNSTREAM::port);
+        registry.add("tradewind.discovery.services.stream-service.host", () -> "localhost");
+        registry.add("tradewind.discovery.services.stream-service.port", DOWNSTREAM::port);
         registry.add("tradewind.ws.ticket-ttl", () -> "2s");
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));

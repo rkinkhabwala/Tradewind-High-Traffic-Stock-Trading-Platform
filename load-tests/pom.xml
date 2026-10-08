@@ -45,6 +45,12 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.hdrhistogram</groupId>
+            <artifactId>HdrHistogram</artifactId>
+            <version>2.2.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
@@ -71,6 +77,11 @@
                     <resultsFolder>${project.build.directory}/gatling</resultsFolder>
                     <!-- A failed correctness check or assertion must fail the command. -->
                     <failOnError>true</failOnError>
+                    <!-- 10k WebSocket clients and their message processing need room. -->
+                    <jvmArgs>
+                        <jvmArg>-Xms1g</jvmArg>
+                        <jvmArg>-Xmx3g</jvmArg>
+                    </jvmArgs>
                 </configuration>
             </plugin>
             <plugin>

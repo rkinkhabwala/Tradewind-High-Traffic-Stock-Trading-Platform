@@ -1,7 +1,7 @@
 package com.tradewind.gateway;
 
-import com.tradewind.gateway.stream.InstanceResolver;
-import com.tradewind.gateway.stream.StreamInstances;
+import com.tradewind.gateway.discovery.InstanceResolver;
+import com.tradewind.gateway.discovery.ServiceInstances;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,15 +53,15 @@ class StreamDiscoveryTest {
         @Bean
         @Primary
         InstanceResolver testResolver() {
-            return DNS::get;
+            return (serviceId, target) -> serviceId.equals("stream-service") ? DNS.get() : List.of();
         }
     }
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("ACCOUNT_SERVICE_URL", ACCOUNT::baseUrl);
-        registry.add("tradewind.stream.discovery.refresh-interval", () -> "300ms");
-        registry.add("tradewind.stream.discovery.health-timeout", () -> "200ms");
+        registry.add("tradewind.discovery.refresh-interval", () -> "300ms");
+        registry.add("tradewind.discovery.health-timeout", () -> "200ms");
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
     }
@@ -77,7 +77,7 @@ class StreamDiscoveryTest {
     @Autowired
     WebTestClient web;
     @Autowired
-    StreamInstances instances;
+    ServiceInstances instances;
 
     @BeforeEach
     void allHealthy() {
@@ -85,7 +85,7 @@ class StreamDiscoveryTest {
         B.healthy = true;
         C.healthy = true;
         DNS.set(List.of(A.uri(), B.uri(), C.uri()));
-        await().atMost(Duration.ofSeconds(5)).until(() -> instances.healthy().size() == 3);
+        await().atMost(Duration.ofSeconds(5)).until(() -> instances.healthy("stream-service").size() == 3);
     }
 
     /** Opens /ws the way a client does (fresh one-time ticket) and returns the instance that answered, or the status. */
@@ -121,29 +121,29 @@ class StreamDiscoveryTest {
     @Test
     void anInstanceFailingItsHealthCheckGetsNoNewClients() {
         B.healthy = false;
-        await().atMost(Duration.ofSeconds(2)).until(() -> instances.healthy().size() == 2);
+        await().atMost(Duration.ofSeconds(2)).until(() -> instances.healthy("stream-service").size() == 2);
         assertThat(connect(6)).containsOnly("a", "c");
 
         B.healthy = true;           // recovered: back in rotation
-        await().atMost(Duration.ofSeconds(2)).until(() -> instances.healthy().size() == 3);
+        await().atMost(Duration.ofSeconds(2)).until(() -> instances.healthy("stream-service").size() == 3);
         assertThat(connect(6)).contains("b");
     }
 
     @Test
     void anInstanceLeavingDnsOrDyingIsDroppedWithinARefresh() {
         DNS.set(List.of(A.uri(), C.uri()));                          // scaled down / container removed
-        await().atMost(Duration.ofSeconds(2)).until(() -> instances.healthy().size() == 2);
+        await().atMost(Duration.ofSeconds(2)).until(() -> instances.healthy("stream-service").size() == 2);
         assertThat(connect(4)).containsOnly("a", "c");
 
         DNS.set(List.of(A.uri(), C.uri(), URI.create("http://127.0.0.1:1")));   // listed but nothing listening
-        await().during(Duration.ofMillis(800)).atMost(Duration.ofSeconds(2)).until(() -> instances.healthy().size() == 2);
+        await().during(Duration.ofMillis(800)).atMost(Duration.ofSeconds(2)).until(() -> instances.healthy("stream-service").size() == 2);
         assertThat(connect(4)).containsOnly("a", "c");
     }
 
     @Test
     void withNoHealthyInstanceTheGatewayAnswers503() {
         DNS.set(List.of());
-        await().atMost(Duration.ofSeconds(2)).until(() -> instances.healthy().isEmpty());
+        await().atMost(Duration.ofSeconds(2)).until(() -> instances.healthy("stream-service").isEmpty());
         assertThat(connect()).isEqualTo("503");
     }
 

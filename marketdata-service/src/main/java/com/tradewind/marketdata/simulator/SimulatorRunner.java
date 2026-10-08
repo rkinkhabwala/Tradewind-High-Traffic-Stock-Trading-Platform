@@ -37,8 +37,11 @@ class SimulatorRunner implements SmartLifecycle {
     private List<AsyncTickSink> asyncSinks = List.of();
     private volatile boolean running;
 
+    private final TickRate rate;
+
     SimulatorRunner(SimulatorProperties properties, SymbolCatalog catalog, QuoteStore quotes, KafkaTickPublisher kafka,
-                    CandleAggregator candles, MarketClock clock, MeterRegistry meters) {
+                    CandleAggregator candles, MarketClock clock, MeterRegistry meters, TickRate rate) {
+        this.rate = rate;
         this.properties = properties;
         this.catalog = catalog;
         this.quotes = quotes;
@@ -58,7 +61,7 @@ class SimulatorRunner implements SmartLifecycle {
                 new AsyncTickSink("redis", quotes::write, properties.sinkQueueCapacity(), meters),
                 new AsyncTickSink("kafka", kafka, properties.sinkQueueCapacity(), meters));
         MarketSimulator simulator = new MarketSimulator(catalog.all(), quotes.readAllSafely(catalog.all()), clock,
-                List.of(asyncSinks.get(0), asyncSinks.get(1), candles), properties, System.nanoTime());
+                List.of(asyncSinks.get(0), asyncSinks.get(1), candles), properties, System.nanoTime(), rate);
         Counter produced = Counter.builder("marketdata.ticks.produced").register(meters);
         loop = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().name("price-simulator").daemon().factory());
         loop.scheduleWithFixedDelay(() -> {

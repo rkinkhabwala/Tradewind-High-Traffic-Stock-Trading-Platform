@@ -1,77 +1,38 @@
 package com.tradewind.load;
 
-import io.gatling.javaapi.core.ChainBuilder;
-import io.gatling.javaapi.core.FeederBuilder;
 import io.gatling.javaapi.core.ScenarioBuilder;
-import io.gatling.javaapi.core.Simulation;
-import io.gatling.javaapi.http.HttpProtocolBuilder;
 
 import java.time.Duration;
-import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-import static io.gatling.javaapi.core.CoreDsl.StringBody;
-import static io.gatling.javaapi.core.CoreDsl.csv;
-import static io.gatling.javaapi.core.CoreDsl.details;
-import static io.gatling.javaapi.core.CoreDsl.exec;
+import static io.gatling.javaapi.core.CoreDsl.constantUsersPerSec;
 import static io.gatling.javaapi.core.CoreDsl.global;
-import static io.gatling.javaapi.core.CoreDsl.jsonPath;
-import static io.gatling.javaapi.core.CoreDsl.pace;
-import static io.gatling.javaapi.core.CoreDsl.rampUsers;
+import static io.gatling.javaapi.core.CoreDsl.rampUsersPerSec;
 import static io.gatling.javaapi.core.CoreDsl.scenario;
-import static io.gatling.javaapi.http.HttpDsl.http;
-import static io.gatling.javaapi.http.HttpDsl.status;
 
 /**
- * Order placement through the gateway (spec 8 "order placement throughput", "order API latency"): each virtual
- * user is one funded load user that logs in once, then places market buys of 1 share of a random liquid symbol
- * at a fixed pace. Throughput = users x per-user rate (the gateway allows 10/s per user, burst 20).
- * <p>
- * Defaults are a smoke run (20 users x 1 order/s for 30 s); milestone u sets the target profile:
- * {@code scripts/load.sh OrderFlowSimulation -Dload.simUsers=1000 -Dload.perUserOrdersPerSec=1 -Dload.duration=300s}
+ * Spec 8 "order placement throughput" (1,000 orders/s sustained), "order API latency" (p99 < 100 ms) and
+ * "order-to-fill" (p99 < 500 ms): market buys of random liquid symbols at a constant rate.
+ * {@code scripts/load.sh OrderFlowSimulation -Dload.ordersPerSec=1000 -Dload.duration=300s}
  */
-public class OrderFlowSimulation extends Simulation {
+public class OrderFlowSimulation extends OrderSimulation {
 
-    static final int USERS = LoadConfig.getInt("simUsers", 20);
-    static final double PER_USER_RATE = LoadConfig.getDouble("perUserOrdersPerSec", 1.0);
-    static final Duration DURATION = LoadConfig.getDuration("duration", Duration.ofSeconds(30));
-    static final Duration RAMP = LoadConfig.getDuration("rampUp", Duration.ofSeconds(10));
-
-    static final HttpProtocolBuilder PROTOCOL = http.baseUrl(LoadConfig.gatewayUrl())
-            .acceptHeader("application/json")
-            .contentTypeHeader("application/json")
-            .userAgentHeader("tradewind-load");
-
-    /** One funded user per virtual user (circular if there are more virtual users than load users). */
-    static FeederBuilder<String> users() {
-        return csv(LoadConfig.usersFile().toAbsolutePath().toString()).circular();
-    }
-
-    static final ChainBuilder LOGIN = exec(http("login").post("/api/auth/login")
-            .body(StringBody("{\"email\":\"#{email}\",\"password\":\"#{password}\"}"))
-            .check(status().is(200), jsonPath("$.accessToken").saveAs("token")));
-
-    /** One market buy; a fresh Idempotency-Key per order. */
-    static final ChainBuilder PLACE_ORDER = exec(session -> session
-            .set("symbol", LoadConfig.SYMBOLS.get(ThreadLocalRandom.current().nextInt(LoadConfig.SYMBOLS.size())))
-            .set("key", UUID.randomUUID().toString()))
-            .exec(http("place order").post("/api/orders")
-                    .header("Authorization", "Bearer #{token}")
-                    .header("Idempotency-Key", "#{key}")
-                    .body(StringBody("{\"symbol\":\"#{symbol}\",\"side\":\"BUY\",\"type\":\"MARKET\",\"qty\":\"1\"}"))
-                    .check(status().is(202)));
+    final double rate = LoadConfig.getDouble("ordersPerSec", 20);
+    final Duration ramp = LoadConfig.getDuration("rampUp", Duration.ofSeconds(30));
+    final Duration duration = LoadConfig.getDuration("duration", Duration.ofSeconds(30));
 
     final ScenarioBuilder orders = scenario("order flow")
-            .feed(users())
-            .exec(LOGIN)
-            .during(DURATION).on(pace(Duration.ofNanos((long) (1_000_000_000L / PER_USER_RATE))).exec(PLACE_ORDER));
+            .feed(Tokens.randomFeeder())
+            .exec(placeOrder("place order",
+                    s -> LoadConfig.SYMBOLS.get(ThreadLocalRandom.current().nextInt(LoadConfig.SYMBOLS.size())), ""));
 
     {
-        System.out.printf("OrderFlowSimulation: %d users x %.2f orders/s for %s (target %.0f orders/s)%n",
-                USERS, PER_USER_RATE, DURATION, USERS * PER_USER_RATE);
-        setUp(orders.injectOpen(rampUsers(USERS).during(RAMP)))
+        settings.put("ordersPerSec", rate);
+        settings.put("rampUp", ramp.toString());
+        settings.put("duration", duration.toString());
+        System.out.printf("OrderFlowSimulation: ramp to %.0f orders/s over %s, then %s%n", rate, ramp, duration);
+        setUp(orders.injectOpen(rampUsersPerSec(1).to(rate).during(ramp), constantUsersPerSec(rate).during(duration)))
                 .protocols(PROTOCOL)
-                .assertions(global().failedRequests().percent().lt(1.0),
-                        details("place order").responseTime().percentile(99.0).gte(0));     // always reported
+                .assertions(global().failedRequests().percent().lt(1.0));
     }
 }

@@ -1,4 +1,4 @@
-package com.tradewind.gateway.stream;
+package com.tradewind.gateway.discovery;
 
 import java.net.InetAddress;
 import java.net.URI;
@@ -11,16 +11,10 @@ import java.util.List;
  */
 class DnsInstanceResolver implements InstanceResolver {
 
-    private final StreamDiscoveryProperties properties;
-
-    DnsInstanceResolver(StreamDiscoveryProperties properties) {
-        this.properties = properties;
-    }
-
     @Override
-    public List<URI> resolve() throws Exception {
-        return Arrays.stream(InetAddress.getAllByName(properties.host()))
-                .map(address -> URI.create("http://" + hostLiteral(address) + ":" + properties.port()))
+    public List<URI> resolve(String serviceId, DiscoveryProperties.Target target) throws Exception {
+        return Arrays.stream(InetAddress.getAllByName(target.host()))
+                .map(address -> URI.create("http://" + hostLiteral(address) + ":" + target.port()))
                 .distinct()
                 .toList();
     }
