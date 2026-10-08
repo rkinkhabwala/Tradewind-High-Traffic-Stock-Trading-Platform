@@ -1,0 +1,31 @@
+.label {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+.value {
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  margin: var(--space-1) 0 var(--space-5);
+}
+
+.facts {
+  display: flex;
+  gap: var(--space-6);
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.facts dd {
+  margin: var(--space-1) 0 0;
+  font-weight: var(--font-weight-medium);
+}
+
+.muted {
+  color: var(--color-text-muted);
+}

@@ -298,6 +298,27 @@ services:
       account-service:
         condition: service_healthy
 
+  # The web app (nginx) on :3001: serves the React build and proxies /api and /ws to the gateway (one origin).
+  web:
+    build:
+      context: ./web
+    image: tradewind/web:0.1.0
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3001}:3001"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      gateway:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+
 volumes:
   postgres-data:
   kafka-data:
