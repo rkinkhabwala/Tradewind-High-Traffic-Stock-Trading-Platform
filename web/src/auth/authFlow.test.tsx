@@ -8,7 +8,7 @@ import { fakeFetch, json } from '../test/fakeFetch';
 import { AuthProvider } from './AuthProvider';
 
 const portfolio = { cashCents: 9_800_000, cashReservedCents: 12_345, buyingPowerCents: 9_800_000,
-  totalValueCents: 10_010_000, livePrices: true };
+  totalValueCents: 10_010_000, livePrices: true, accountId: 'a', positions: [], positionsValueCents: 0, dayChangeCents: 0 };
 const token = { accessToken: 'access', tokenType: 'Bearer', expiresIn: 900 };
 
 function renderAt(path: string) {
@@ -37,7 +37,7 @@ describe('sign-in flow', () => {
       'GET /api/portfolio': (c) => (c.headers.authorization === 'Bearer access' ? json(200, portfolio) : json(401)),
     });
     renderAt('/');
-    expect(await screen.findByText('$100,100.00')).toBeInTheDocument();
+    expect(await screen.findByText('$98,123.45')).toBeInTheDocument();
     expect(screen.getByText('$98,000.00')).toBeInTheDocument();
     expect(screen.getByText('$123.45')).toBeInTheDocument();
     expect(window.localStorage.length).toBe(0);
@@ -63,7 +63,7 @@ describe('sign-in flow', () => {
     await userEvent.type(screen.getByLabelText('Password'), 'right-password');
     await userEvent.click(screen.getByRole('button', { name: 'Log in' }));
 
-    expect(await screen.findByText('$100,100.00')).toBeInTheDocument();
+    expect(await screen.findByText('$98,123.45')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/');
     expect(http.calls.filter((c) => c.path === '/api/auth/login').at(-1)?.body).toEqual({
       email: 'demo1@tradewind.test', password: 'right-password' });
@@ -112,7 +112,7 @@ describe('sign-in flow', () => {
       'POST /api/auth/logout': () => new Response(null, { status: 204 }),
     });
     const router = renderAt('/');
-    await screen.findByText('$100,100.00');
+    await screen.findByText('$98,123.45');
 
     await userEvent.click(screen.getByRole('button', { name: 'Log out' }));
 

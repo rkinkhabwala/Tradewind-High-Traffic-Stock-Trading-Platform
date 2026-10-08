@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthProvider';
+import { ConnectionBadge } from './ConnectionBadge';
 import styles from './AppLayout.module.css';
 
 const linkClass = ({ isActive }: { isActive: boolean }) => (isActive ? `${styles.link} ${styles.active}` : styles.link);
@@ -25,6 +26,7 @@ export function AppLayout() {
               Home
             </NavLink>
           </nav>
+          <ConnectionBadge />
           <button type="button" className={styles.logout} onClick={handleLogout}>
             Log out
           </button>

@@ -1,3 +1,15 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-6);
+}
+
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .label {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
@@ -7,23 +19,93 @@
 .value {
   font-size: var(--font-size-xxl);
   font-weight: var(--font-weight-bold);
-  margin: var(--space-1) 0 var(--space-5);
+  margin: var(--space-1) 0;
 }
 
-.facts {
-  display: flex;
-  gap: var(--space-6);
-  margin: 0;
-}
-
-.facts dt {
-  color: var(--color-text-muted);
+.change {
+  margin: 0 0 var(--space-4);
+  font-weight: var(--font-weight-medium);
   font-size: var(--font-size-sm);
 }
 
-.facts dd {
-  margin: var(--space-1) 0 0;
+.positive {
+  color: var(--color-positive);
+}
+
+.negative {
+  color: var(--color-negative);
+}
+
+.ranges {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.range {
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.rangeActive {
+  color: var(--color-accent);
+  background: var(--color-surface);
+}
+
+.buyingPower {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-border);
   font-weight: var(--font-weight-medium);
+}
+
+.side {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  align-self: start;
+}
+
+.sideTitle {
+  font-size: var(--font-size-md);
+  margin: 0 0 var(--space-3);
+}
+
+.positions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.position {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.symbol {
+  font-weight: var(--font-weight-bold);
+}
+
+.qty {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.numbers {
+  text-align: right;
 }
 
 .muted {
