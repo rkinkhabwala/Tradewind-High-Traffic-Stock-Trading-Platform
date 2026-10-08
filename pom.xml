@@ -26,6 +26,7 @@
         <module>order-service</module>
         <module>execution-service</module>
         <module>portfolio-service</module>
+        <module>stream-service</module>
         <!-- Last: launches the packaged service jars of the modules above. -->
         <module>correctness-tests</module>
     </modules>

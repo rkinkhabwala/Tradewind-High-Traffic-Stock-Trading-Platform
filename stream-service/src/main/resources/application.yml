@@ -1,0 +1,37 @@
+server:
+  port: ${STREAM_SERVICE_PORT:8086}
+
+spring:
+  application:
+    name: stream-service
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 500ms
+      connect-timeout: 1s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+tradewind:
+  stream:
+    # Docker sets HOSTNAME to the container id, so each scaled instance reports a distinct id in hello.
+    instance-id: ${STREAM_INSTANCE_ID:${HOSTNAME:}}
+    conflation-interval: ${STREAM_CONFLATION_INTERVAL:250ms}
+    max-subscriptions: ${STREAM_MAX_SUBSCRIPTIONS:100}
+    send-queue-limit: ${STREAM_SEND_QUEUE_LIMIT:256}
+    slow-client-timeout: ${STREAM_SLOW_CLIENT_TIMEOUT:10s}
+    heartbeat-interval: ${STREAM_HEARTBEAT_INTERVAL:15s}
+    idle-timeout: ${STREAM_IDLE_TIMEOUT:45s}
+    close-grace: 5s
+    max-frame-bytes: 16384
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

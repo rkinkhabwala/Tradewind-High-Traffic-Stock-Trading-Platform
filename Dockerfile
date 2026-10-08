@@ -38,3 +38,7 @@ EXPOSE 8084
 FROM runtime AS portfolio-service
 COPY --from=build /src/portfolio-service/target.nosync/portfolio-service-*.jar /app/app.jar
 EXPOSE 8085
+
+FROM runtime AS stream-service
+COPY --from=build /src/stream-service/target.nosync/stream-service-*.jar /app/app.jar
+EXPOSE 8086

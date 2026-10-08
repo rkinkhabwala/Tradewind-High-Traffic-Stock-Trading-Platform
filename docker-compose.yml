@@ -242,6 +242,37 @@ services:
       retries: 12
       start_period: 40s
 
+  # Not published on the host: clients reach it only through the gateway's /ws route (ticket auth), and
+  # milestone n scales it to several instances.
+  stream-service:
+    <<: *java-service
+    build:
+      context: .
+      target: stream-service
+    image: tradewind/stream-service:0.1.0
+    environment:
+      <<: *java-env
+      STREAM_CONFLATION_INTERVAL: ${STREAM_CONFLATION_INTERVAL:-250ms}
+      STREAM_MAX_SUBSCRIPTIONS: ${STREAM_MAX_SUBSCRIPTIONS:-100}
+      STREAM_SLOW_CLIENT_TIMEOUT: ${STREAM_SLOW_CLIENT_TIMEOUT:-10s}
+      STREAM_HEARTBEAT_INTERVAL: ${STREAM_HEARTBEAT_INTERVAL:-15s}
+      STREAM_IDLE_TIMEOUT: ${STREAM_IDLE_TIMEOUT:-45s}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8086/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+
   gateway:
     <<: *java-service
     build:
