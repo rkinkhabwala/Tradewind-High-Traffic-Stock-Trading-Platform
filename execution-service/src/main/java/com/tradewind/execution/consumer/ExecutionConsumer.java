@@ -104,26 +104,32 @@ class ExecutionConsumer implements SmartLifecycle {
         }
         Map<String, Object> props = KafkaDefaults.consumer(bootstrapServers, groupId);
         props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG, RangeAssignor.class.getName());
-        try (KafkaConsumer<String, String> kafka = new KafkaConsumer<>(props)) {
-            consumer = kafka;
-            kafka.subscribe(List.of(Topics.ORDERS_SUBMITTED.name(), Topics.QUOTES_TICKS.name()), new Rebalance());
-            long nextExpiryCheck = 0;
-            while (running) {
-                ConsumerRecords<String, String> records = kafka.poll(POLL);
-                process(kafka, records);
-                if (System.nanoTime() >= nextExpiryCheck) {
-                    expireSafely();
-                    nextExpiryCheck = System.nanoTime() + EXPIRY_CHECK.toNanos();
+        // Never gives up while running: a failure (e.g. removed from the group after a slow batch, so the commit
+        // fails) recreates the consumer. On re-join the books are rebuilt from resting_orders (Rebalance), and
+        // uncommitted records are delivered again; processing is idempotent.
+        while (running) {
+            try (KafkaConsumer<String, String> kafka = new KafkaConsumer<>(props)) {
+                consumer = kafka;
+                kafka.subscribe(List.of(Topics.ORDERS_SUBMITTED.name(), Topics.QUOTES_TICKS.name()), new Rebalance());
+                long nextExpiryCheck = 0;
+                while (running) {
+                    ConsumerRecords<String, String> records = kafka.poll(POLL);
+                    process(kafka, records);
+                    if (System.nanoTime() >= nextExpiryCheck) {
+                        expireSafely();
+                        nextExpiryCheck = System.nanoTime() + EXPIRY_CHECK.toNanos();
+                    }
                 }
+            } catch (WakeupException e) {
+                if (running) {
+                    log.error("Execution consumer woken up unexpectedly, restarting", e);
+                }
+            } catch (RuntimeException e) {
+                log.error("Execution consumer failed, restarting it: {}", e.toString());
+                sleep(RETRY_BACKOFF);
+            } finally {
+                consumer = null;
             }
-        } catch (WakeupException e) {
-            if (running) {
-                throw e;
-            }
-        } catch (RuntimeException e) {
-            log.error("Execution consumer stopped unexpectedly", e);
-        } finally {
-            consumer = null;
         }
     }
 

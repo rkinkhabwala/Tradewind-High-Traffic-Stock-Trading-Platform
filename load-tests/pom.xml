@@ -81,6 +81,8 @@
                     <jvmArgs>
                         <jvmArg>-Xms1g</jvmArg>
                         <jvmArg>-Xmx3g</jvmArg>
+                        <!-- macOS: the JVM otherwise caps open files at 10,240, below 10k sockets plus HTTP. -->
+                        <jvmArg>-XX:-MaxFDLimit</jvmArg>
                     </jvmArgs>
                 </configuration>
             </plugin>

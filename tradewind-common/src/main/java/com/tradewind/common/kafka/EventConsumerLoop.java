@@ -42,15 +42,28 @@ public final class EventConsumerLoop implements AutoCloseable {
     private final Handler handler;
     private volatile boolean running;
     private volatile KafkaConsumer<String, String> consumer;
+    private final java.util.concurrent.atomic.AtomicInteger restarts = new java.util.concurrent.atomic.AtomicInteger();
     private Thread thread;
 
     public EventConsumerLoop(String name, String bootstrapServers, String groupId, List<TopicSpec> topics,
                              Handler handler) {
+        this(name, bootstrapServers, groupId, topics, handler, Map.of());
+    }
+
+    /** {@code overrides} replace consumer settings (tests use a short max.poll.interval.ms). */
+    public EventConsumerLoop(String name, String bootstrapServers, String groupId, List<TopicSpec> topics,
+                             Handler handler, Map<String, Object> overrides) {
         this.name = name;
         this.bootstrapServers = bootstrapServers;
-        this.properties = KafkaDefaults.consumer(bootstrapServers, groupId);
+        this.properties = new HashMap<>(KafkaDefaults.consumer(bootstrapServers, groupId));
+        this.properties.putAll(overrides);
         this.topics = topics;
         this.handler = handler;
+    }
+
+    /** How often the consumer was recreated after an unexpected failure. */
+    public int restarts() {
+        return restarts.get();
     }
 
     public void start() {
@@ -78,24 +91,34 @@ public final class EventConsumerLoop implements AutoCloseable {
         }
     }
 
+    /**
+     * Never gives up while running: any unexpected failure (e.g. the consumer was removed from the group after a
+     * slow batch, so the commit fails) closes the consumer, backs off and re-joins. Uncommitted records are
+     * delivered again; handlers are idempotent (processed-event markers), so nothing is lost or applied twice.
+     */
     private void run() {
         if (!KafkaTopics.ensureWithRetry(bootstrapServers, topics, () -> running)) {
             return;
         }
-        try (KafkaConsumer<String, String> kafka = new KafkaConsumer<>(properties)) {
-            consumer = kafka;
-            kafka.subscribe(topics.stream().map(TopicSpec::name).toList());
-            while (running) {
-                process(kafka, kafka.poll(POLL));
+        while (running) {
+            try (KafkaConsumer<String, String> kafka = new KafkaConsumer<>(properties)) {
+                consumer = kafka;
+                kafka.subscribe(topics.stream().map(TopicSpec::name).toList());
+                while (running) {
+                    process(kafka, kafka.poll(POLL));
+                }
+            } catch (WakeupException e) {
+                if (running) {
+                    log.error("{} woken up unexpectedly, restarting", name, e);
+                    restarts.incrementAndGet();
+                }
+            } catch (RuntimeException e) {
+                log.error("{} failed, restarting the consumer: {}", name, e.toString());
+                restarts.incrementAndGet();
+                sleep();
+            } finally {
+                consumer = null;
             }
-        } catch (WakeupException e) {
-            if (running) {
-                log.error("{} woken up unexpectedly", name, e);
-            }
-        } catch (RuntimeException e) {
-            log.error("{} stopped unexpectedly", name, e);
-        } finally {
-            consumer = null;
         }
     }
 

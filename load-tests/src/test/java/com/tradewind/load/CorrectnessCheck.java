@@ -62,10 +62,14 @@ public final class CorrectnessCheck {
         long start = System.nanoTime();
         try (Connection orders = connect("orders"); Connection execution = connect("execution");
              Connection portfolio = connect("portfolio")) {
-            Duration quiet = awaitQuiet(orders, execution, portfolio);
             Map<String, Object> facts = new HashMap<>();
             List<String> problems = new ArrayList<>();
-            facts.put("quietAfterSeconds", quiet.toSeconds());
+            try {
+                facts.put("quietAfterSeconds", awaitQuiet(orders, execution, portfolio).toSeconds());
+            } catch (IllegalStateException notQuiet) {
+                // Still check everything: the books must be consistent even if something is stuck.
+                problems.add(notQuiet.getMessage());
+            }
             checkOrders(orders, execution, facts, problems);
             checkFills(execution, portfolio, facts, problems);
             checkReservations(orders, portfolio, facts, problems);
