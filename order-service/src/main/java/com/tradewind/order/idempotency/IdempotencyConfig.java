@@ -5,6 +5,9 @@ import com.tradewind.common.idempotency.IdempotencyKeys;
 import com.tradewind.common.idempotency.IdempotencyResponseCache;
 import com.tradewind.common.idempotency.JdbcIdempotentExecutor;
 import com.tradewind.common.idempotency.StoredResponse;
+import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.jdbc.JdbcConnectionDetails;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -19,9 +22,52 @@ import java.util.UUID;
 @Configuration
 class IdempotencyConfig {
 
+    /**
+     * Idempotency bookkeeping (claim a key, record the response) on its own small pool whose sessions do not wait
+     * for the WAL to reach disk (synchronous_commit=off), which saves two of the ~5 disk syncs per order. Safe here:
+     * <ul>
+     *   <li>a claim becomes durable with the order's own (fully durable) insert moments later: the WAL is sequential;</li>
+     *   <li>a recorded response lost in a crash leaves a claim without a response; the retry takes it over after the
+     *   abandon timeout, finds the order by its unique (account, client_order_id) and answers with that same order.</li>
+     * </ul>
+     * Orders, the outbox and everything else stay fully durable on the main pool. Not a DataSource bean, so Spring
+     * Boot's primary DataSource is unaffected.
+     */
+    static final class IdempotencyDatabase implements AutoCloseable {
+        final HikariDataSource dataSource;
+        final JdbcClient jdbc;
+
+        IdempotencyDatabase(JdbcConnectionDetails details, int poolSize, String synchronousCommit) {
+            if (!java.util.Set.of("on", "off", "local").contains(synchronousCommit)) {
+                throw new IllegalArgumentException("synchronous_commit must be on, off or local");
+            }
+            dataSource = new HikariDataSource();
+            dataSource.setPoolName("idempotency");
+            dataSource.setJdbcUrl(details.getJdbcUrl());
+            dataSource.setUsername(details.getUsername());
+            dataSource.setPassword(details.getPassword());
+            dataSource.setMaximumPoolSize(poolSize);
+            dataSource.setConnectionTimeout(3000);
+            dataSource.addDataSourceProperty("options", "-c statement_timeout=5000 -c synchronous_commit=" + synchronousCommit);
+            jdbc = JdbcClient.create(dataSource);
+        }
+
+        @Override
+        public void close() {
+            dataSource.close();
+        }
+    }
+
+    @Bean(destroyMethod = "close")
+    IdempotencyDatabase idempotencyDatabase(JdbcConnectionDetails details,
+                                            @Value("${tradewind.idempotency.pool-size:10}") int poolSize,
+                                            @Value("${tradewind.idempotency.synchronous-commit:off}") String synchronousCommit) {
+        return new IdempotencyDatabase(details, poolSize, synchronousCommit);
+    }
+
     @Bean
-    JdbcIdempotentExecutor jdbcIdempotentExecutor(JdbcClient jdbc, Clock clock) {
-        return new JdbcIdempotentExecutor(jdbc, clock);
+    JdbcIdempotentExecutor jdbcIdempotentExecutor(IdempotencyDatabase database, Clock clock) {
+        return new JdbcIdempotentExecutor(database.jdbc, clock);
     }
 
     @Bean

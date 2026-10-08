@@ -40,9 +40,13 @@ public final class EventConsumerLoop implements AutoCloseable {
     private final Map<String, Object> properties;
     private final List<TopicSpec> topics;
     private final Handler handler;
+    /** When set, each poll's records are applied in one database transaction (see {@link #withBatchTransactions}). */
+    private volatile BatchTransaction batchTransaction;
+    private volatile int maxBatch = 25;
     private volatile boolean running;
     private volatile KafkaConsumer<String, String> consumer;
     private final java.util.concurrent.atomic.AtomicInteger restarts = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger batches = new java.util.concurrent.atomic.AtomicInteger();
     private Thread thread;
 
     public EventConsumerLoop(String name, String bootstrapServers, String groupId, List<TopicSpec> topics,
@@ -59,6 +63,37 @@ public final class EventConsumerLoop implements AutoCloseable {
         this.properties.putAll(overrides);
         this.topics = topics;
         this.handler = handler;
+    }
+
+    /** Runs work in one database transaction (e.g. a TransactionTemplate); kept generic to avoid a Spring dependency. */
+    @FunctionalInterface
+    public interface BatchTransaction {
+        void inTransaction(Runnable work);
+    }
+
+    /**
+     * Applies all records of a poll in one transaction instead of one per record, so a busy consumer pays one commit
+     * (one WAL sync) per batch. Handlers must take part in an existing transaction (Spring's default propagation).
+     * If anything in the batch fails, the whole batch is rolled back and then applied record by record as without
+     * this option, so one bad record is still isolated and retried on its own.
+     */
+    public EventConsumerLoop withBatchTransactions(BatchTransaction transaction) {
+        return withBatchTransactions(transaction, 25);
+    }
+
+    /**
+     * {@code maxBatch} bounds how many records share one transaction: a transaction holds its row locks until it
+     * commits, and those rows (an account's balances, an order) are also wanted by the request path. Measured:
+     * whole polls (up to 500 fills) made reservations wait behind fill batches; small chunks keep locks short and
+     * still cut commits by about that factor.
+     */
+    public EventConsumerLoop withBatchTransactions(BatchTransaction transaction, int maxBatch) {
+        if (maxBatch < 1) {
+            throw new IllegalArgumentException("maxBatch must be positive");
+        }
+        this.batchTransaction = transaction;
+        this.maxBatch = maxBatch;
+        return this;
     }
 
     /** How often the consumer was recreated after an unexpected failure. */
@@ -123,7 +158,16 @@ public final class EventConsumerLoop implements AutoCloseable {
     }
 
     private void process(KafkaConsumer<String, String> kafka, ConsumerRecords<String, String> records) {
+        process(kafka, records, true);
+    }
+
+    private void process(KafkaConsumer<String, String> kafka, ConsumerRecords<String, String> records, boolean allowBatch) {
         if (records.isEmpty()) {
+            return;
+        }
+        BatchTransaction batch = batchTransaction;
+        if (allowBatch && batch != null && records.count() > 1) {
+            processInChunks(kafka, batch, records);
             return;
         }
         Map<TopicPartition, OffsetAndMetadata> done = new HashMap<>();
@@ -148,6 +192,61 @@ public final class EventConsumerLoop implements AutoCloseable {
         if (!done.isEmpty()) {
             kafka.commitSync(done, COMMIT_TIMEOUT);
         }
+    }
+
+    /**
+     * Applies the poll in chunks of at most {@code maxBatch}, one transaction each, committing offsets after each
+     * chunk. A chunk that fails is rolled back and the rest of the poll goes record by record (rewind on failure).
+     */
+    private void processInChunks(KafkaConsumer<String, String> kafka, BatchTransaction batch,
+                                 ConsumerRecords<String, String> records) {
+        List<ConsumerRecord<String, String>> all = new java.util.ArrayList<>(records.count());
+        records.forEach(all::add);
+        for (int from = 0; from < all.size(); from += maxBatch) {
+            List<ConsumerRecord<String, String>> chunk = all.subList(from, Math.min(all.size(), from + maxBatch));
+            if (chunk.size() > 1 && processBatch(batch, chunk)) {
+                kafka.commitSync(nextOffsets(chunk), COMMIT_TIMEOUT);
+                continue;
+            }
+            // Record by record from here, exactly as without batching (rewinds the partitions on failure).
+            Map<TopicPartition, List<ConsumerRecord<String, String>>> rest = new java.util.LinkedHashMap<>();
+            all.subList(from, all.size()).forEach(r ->
+                    rest.computeIfAbsent(new TopicPartition(r.topic(), r.partition()), p -> new java.util.ArrayList<>()).add(r));
+            process(kafka, new ConsumerRecords<>(rest), false);
+            return;
+        }
+    }
+
+    private static Map<TopicPartition, OffsetAndMetadata> nextOffsets(List<ConsumerRecord<String, String>> chunk) {
+        Map<TopicPartition, OffsetAndMetadata> offsets = new HashMap<>();
+        for (ConsumerRecord<String, String> r : chunk) {
+            offsets.put(new TopicPartition(r.topic(), r.partition()), new OffsetAndMetadata(r.offset() + 1));
+        }
+        return offsets;
+    }
+
+    /** True if the records were applied in one transaction; false if it was rolled back. */
+    private boolean processBatch(BatchTransaction batch, List<ConsumerRecord<String, String>> records) {
+        try {
+            batch.inTransaction(() -> {
+                for (ConsumerRecord<String, String> record : records) {
+                    EventEnvelope<JsonNode> event = read(record);
+                    if (event != null) {
+                        handler.handle(event, record);
+                    }
+                }
+            });
+            batches.incrementAndGet();
+            return true;
+        } catch (RuntimeException e) {
+            log.debug("{}: batch of {} rolled back, applying record by record: {}", name, records.size(), e.toString());
+            return false;
+        }
+    }
+
+    /** Polls applied as one transaction. */
+    public int batches() {
+        return batches.get();
     }
 
     private EventEnvelope<JsonNode> read(ConsumerRecord<String, String> record) {

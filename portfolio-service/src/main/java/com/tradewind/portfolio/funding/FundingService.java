@@ -42,13 +42,13 @@ public class FundingService {
 
     public FundingResult deposit(UUID referenceId, UUID accountId, Money amount) {
         return move(LedgerTxnType.DEPOSIT, "deposit:" + referenceId, referenceId, accountId,
-                LedgerAccountKey.houseCash(), LedgerAccountKey.cash(accountId), amount);
+                LedgerAccountKey.houseCash(referenceId), LedgerAccountKey.cash(accountId), amount);
     }
 
     /** Throws InsufficientBalanceException if available (unreserved) cash is too low. */
     public FundingResult withdraw(UUID referenceId, UUID accountId, Money amount) {
         return move(LedgerTxnType.WITHDRAWAL, "withdrawal:" + referenceId, referenceId, accountId,
-                LedgerAccountKey.cash(accountId), LedgerAccountKey.houseCash(), amount);
+                LedgerAccountKey.cash(accountId), LedgerAccountKey.houseCash(referenceId), amount);
     }
 
     private FundingResult move(LedgerTxnType type, String reference, UUID referenceId, UUID accountId,

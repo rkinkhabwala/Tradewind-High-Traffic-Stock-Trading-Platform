@@ -52,6 +52,8 @@ public class ReconciliationService {
 
     public Report run() {
         return snapshot.execute(status -> {
+            // Full scans of the ledger: far beyond the 5 s every other statement gets once the ledger is large.
+            jdbc.sql("SET LOCAL statement_timeout = '120s'").update();
             List<BalanceMismatch> mismatches = jdbc.sql("""
                             SELECT b.ledger_account_id, b.amount AS cached, coalesce(sum(e.amount), 0) AS ledger
                             FROM balances b LEFT JOIN ledger_entries e ON e.ledger_account_id = b.ledger_account_id

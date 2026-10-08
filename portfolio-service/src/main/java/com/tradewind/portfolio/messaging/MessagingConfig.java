@@ -72,6 +72,8 @@ class MessagingConfig {
         private final String bootstrapServers;
         private final int batchSize;
         private volatile boolean topicsReady;
+        @org.springframework.beans.factory.annotation.Value("${tradewind.outbox.retention:10m}")
+        private Duration retention = Duration.ofMinutes(10);
 
         OutboxRelayScheduler(OutboxRelay relay, Clock clock, String bootstrapServers, int batchSize) {
             this.relay = relay;
@@ -94,9 +96,14 @@ class MessagingConfig {
             }
         }
 
-        @Scheduled(fixedDelayString = "PT1H")
+        /** Published rows are kept briefly for debugging, then deleted (tradewind.outbox.retention, default 10 min). */
+        @Scheduled(fixedDelayString = "PT1M", initialDelayString = "PT1M")
         void purge() {
-            relay.purgePublishedBefore(clock.instant().minus(Duration.ofDays(1)));
+            try {
+                relay.purgePublishedBefore(clock.instant().minus(retention));
+            } catch (RuntimeException e) {
+                log.warn("Outbox purge failed, will retry: {}", e.toString());
+            }
         }
 
         private boolean ensureTopics() {

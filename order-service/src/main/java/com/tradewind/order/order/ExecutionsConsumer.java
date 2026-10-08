@@ -19,7 +19,10 @@ class ExecutionsConsumer implements SmartLifecycle {
     private final EventConsumerLoop loop;
 
     ExecutionsConsumer(OrderStatusUpdater updater, @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
-                       @Value("${tradewind.orders.consumer-group:order-service}") String groupId) {
+                       @Value("${tradewind.orders.consumer-group:order-service}") String groupId,
+                       org.springframework.transaction.support.TransactionTemplate transactions,
+                       @Value("${tradewind.consumer.batch-transactions:true}") boolean batchTransactions,
+                       @Value("${tradewind.consumer.max-batch:25}") int maxBatch) {
         this.loop = new EventConsumerLoop("order-executions", bootstrapServers, groupId,
                 List.of(Topics.EXECUTIONS), (event, record) -> {
             switch (event.eventType()) {
@@ -35,6 +38,10 @@ class ExecutionsConsumer implements SmartLifecycle {
                 default -> { }  // CancelRejected: the order already reached its terminal state via another event
             }
         });
+        if (batchTransactions) {
+            // One transaction (one WAL sync) per poll instead of per record; falls back to per record on failure.
+            loop.withBatchTransactions(work -> transactions.executeWithoutResult(status -> work.run()), maxBatch);
+        }
     }
 
     private static UUID orderId(com.fasterxml.jackson.databind.JsonNode payload) {

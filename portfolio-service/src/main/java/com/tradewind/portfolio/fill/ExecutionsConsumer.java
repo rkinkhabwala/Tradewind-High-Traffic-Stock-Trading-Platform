@@ -22,7 +22,10 @@ class ExecutionsConsumer implements SmartLifecycle {
     private final EventConsumerLoop loop;
 
     ExecutionsConsumer(FillService fills, @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
-                       @Value("${tradewind.portfolio.consumer-group:portfolio-service}") String groupId) {
+                       @Value("${tradewind.portfolio.consumer-group:portfolio-service}") String groupId,
+                       org.springframework.transaction.support.TransactionTemplate transactions,
+                       @Value("${tradewind.consumer.batch-transactions:true}") boolean batchTransactions,
+                       @Value("${tradewind.consumer.max-batch:25}") int maxBatch) {
         this.loop = new EventConsumerLoop("portfolio-executions", bootstrapServers, groupId,
                 List.of(Topics.EXECUTIONS), (event, record) -> {
             switch (event.eventType()) {
@@ -33,6 +36,10 @@ class ExecutionsConsumer implements SmartLifecycle {
                 default -> { }  // CancelRejected changes nothing in the books
             }
         });
+        if (batchTransactions) {
+            // One transaction (one WAL sync) per poll instead of per record; falls back to per record on failure.
+            loop.withBatchTransactions(work -> transactions.executeWithoutResult(status -> work.run()), maxBatch);
+        }
     }
 
     @Override

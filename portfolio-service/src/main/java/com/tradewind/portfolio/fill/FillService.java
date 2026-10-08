@@ -78,17 +78,17 @@ public class FillService {
 
             List<Posting> postings = new ArrayList<>();
             if (e.side() == OrderSide.BUY) {
-                postings.add(new Posting(LedgerAccountKey.houseShares(symbol), shares.negate()));
+                postings.add(new Posting(LedgerAccountKey.houseShares(symbol, e.executionId()), shares.negate()));
                 postings.add(new Posting(LedgerAccountKey.position(account, symbol), shares));
                 if (amount.isPositive()) {      // a tiny fractional fill can round to zero cents
                     postings.add(new Posting(LedgerAccountKey.cashReserved(account), dollars.negate()));
-                    postings.add(new Posting(LedgerAccountKey.houseCash(), dollars));
+                    postings.add(new Posting(LedgerAccountKey.houseCash(e.executionId()), dollars));
                 }
             } else {
                 postings.add(new Posting(LedgerAccountKey.positionReserved(account, symbol), shares.negate()));
-                postings.add(new Posting(LedgerAccountKey.houseShares(symbol), shares));
+                postings.add(new Posting(LedgerAccountKey.houseShares(symbol, e.executionId()), shares));
                 if (amount.isPositive()) {
-                    postings.add(new Posting(LedgerAccountKey.houseCash(), dollars.negate()));
+                    postings.add(new Posting(LedgerAccountKey.houseCash(e.executionId()), dollars.negate()));
                     postings.add(new Posting(LedgerAccountKey.cash(account), dollars));
                 }
             }

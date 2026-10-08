@@ -96,10 +96,22 @@ public class OutboxRelay {
         return published == null ? 0 : published;
     }
 
-    /** Keeps the table small; published rows are only needed for debugging. */
+    /**
+     * Keeps the table small; published rows are only needed for debugging. Deletes in batches of 5,000 so no single
+     * transaction holds locks or WAL for long (at load-test rates the table gains hundreds of thousands of rows an
+     * hour, and an unbounded table pushes the hot data out of Postgres' cache). Returns the rows deleted.
+     */
     public int purgePublishedBefore(Instant cutoff) {
-        return jdbc.sql("DELETE FROM outbox WHERE published_at IS NOT NULL AND published_at < :cutoff")
-                .param("cutoff", Timestamp.from(cutoff))
-                .update();
+        int total = 0;
+        int deleted;
+        do {
+            deleted = jdbc.sql("""
+                            DELETE FROM outbox WHERE id IN (
+                                SELECT id FROM outbox WHERE published_at IS NOT NULL AND published_at < :cutoff LIMIT 5000)""")
+                    .param("cutoff", Timestamp.from(cutoff))
+                    .update();
+            total += deleted;
+        } while (deleted == 5000);
+        return total;
     }
 }
