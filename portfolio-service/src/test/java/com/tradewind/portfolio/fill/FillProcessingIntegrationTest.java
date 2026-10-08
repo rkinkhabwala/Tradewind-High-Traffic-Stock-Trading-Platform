@@ -49,6 +49,8 @@ class FillProcessingIntegrationTest {
     TestRestTemplate http;
     @Autowired
     KafkaContainer kafka;
+    @Autowired
+    org.springframework.data.redis.connection.RedisConnectionFactory redisConnections;
 
     private KafkaProducer<String, String> producer;
     private UUID account;
@@ -235,5 +237,59 @@ class FillProcessingIntegrationTest {
         assertThat(last.get("cash")).isEqualTo(10_000_000 - 20_000);
         assertThat(last.get("symbol")).isEqualTo("AMD");
         assertThat(last.get("positionQty")).isEqualTo("1.000000");
+    }
+
+    /** Subscribes to the account's Redis channel, as stream-service does, for the duration of a test. */
+    static final class UserChannel implements AutoCloseable {
+        final List<Map<?, ?>> messages = new java.util.concurrent.CopyOnWriteArrayList<>();
+        private final org.springframework.data.redis.listener.RedisMessageListenerContainer container =
+                new org.springframework.data.redis.listener.RedisMessageListenerContainer();
+
+        UserChannel(org.springframework.data.redis.connection.RedisConnectionFactory redis, UUID account) {
+            container.setConnectionFactory(redis);
+            container.addMessageListener((message, pattern) -> messages.add(
+                            EventJson.newMapper().convertValue(parse(message.getBody()), Map.class)),
+                    new org.springframework.data.redis.listener.ChannelTopic("user:" + account));
+            container.afterPropertiesSet();
+            container.start();
+        }
+
+        private static com.fasterxml.jackson.databind.JsonNode parse(byte[] body) {
+            try {
+                return EventJson.newMapper().readTree(body);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        List<Object> field(String type, String key) {
+            return messages.stream().filter(m -> type.equals(m.get("type"))).<Object>map(m -> m.get(key)).toList();
+        }
+
+        @Override
+        public void close() throws Exception {
+            container.destroy();
+        }
+    }
+
+    @Test
+    void everyCommittedLedgerChangeIsPushedToTheAccountChannel() throws Exception {
+        try (UserChannel channel = new UserChannel(redisConnections, account)) {
+            UUID order = reserveCash(210_011);
+            send(fill(order, OrderSide.BUY, "AAPL", 1, "10", "200.01", "10", "0"));
+
+            await().atMost(Duration.ofSeconds(20)).until(() -> channel.field("portfolio", "reason").contains("FILL"));
+            Map<?, ?> reserve = channel.messages.getFirst();
+            assertThat(reserve.get("reason")).isEqualTo("RESERVE");
+            assertThat(((Number) reserve.get("cashReservedCents")).longValue()).isEqualTo(210_011);
+            assertThat(((Number) reserve.get("buyingPowerCents")).longValue()).isEqualTo(10_000_000 - 210_011);
+
+            Map<?, ?> fill = channel.messages.stream().filter(m -> "FILL".equals(m.get("reason"))).findFirst().orElseThrow();
+            assertThat(((Number) fill.get("cashCents")).longValue()).isEqualTo(10_000_000 - 200_010);
+            assertThat(((Number) fill.get("cashReservedCents")).longValue()).isZero();
+            assertThat(fill.get("symbol")).isEqualTo("AAPL");
+            assertThat(fill.get("positionQty")).isEqualTo("10.000000");
+            assertThat(fill.get("type")).isEqualTo("portfolio");
+        }
     }
 }

@@ -6,6 +6,7 @@ import com.tradewind.stream.quote.QuoteSnapshots;
 import com.tradewind.stream.session.ClientSession;
 import com.tradewind.stream.session.SessionRegistry;
 import com.tradewind.stream.session.StreamMetrics;
+import com.tradewind.stream.session.UserChannels;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,14 +36,16 @@ class StreamWebSocketHandler implements WebSocketHandler {
     static final Pattern SYMBOL = Pattern.compile("[A-Z][A-Z0-9.]{0,9}");
 
     private final SessionRegistry registry;
+    private final UserChannels userChannels;
     private final QuoteSnapshots quotes;
     private final StreamProperties properties;
     private final Scheduler scheduler;
     private final StreamMetrics metrics;
 
-    StreamWebSocketHandler(SessionRegistry registry, QuoteSnapshots quotes, StreamProperties properties,
+    StreamWebSocketHandler(SessionRegistry registry, UserChannels userChannels, QuoteSnapshots quotes, StreamProperties properties,
                            @Qualifier("streamScheduler") Scheduler scheduler, MeterRegistry meters) {
         this.registry = registry;
+        this.userChannels = userChannels;
         this.quotes = quotes;
         this.properties = properties;
         this.scheduler = scheduler;
@@ -58,6 +61,7 @@ class StreamWebSocketHandler implements WebSocketHandler {
                 IdentityFilter.parse(headers.getFirst(IdentityFilter.ACCOUNT_ID)),
                 properties, scheduler, (code, reason) -> close(socket, kill, code, reason), metrics);
         registry.register(session);
+        userChannels.join(session);
         session.send(Protocol.hello(properties.instanceId(), properties.heartbeatInterval().toSeconds()));
 
         Mono<Void> out = socket.send(session.outbound().map(socket::textMessage));
@@ -66,7 +70,10 @@ class StreamWebSocketHandler implements WebSocketHandler {
                 .then();
         return Mono.firstWithSignal(in, out, kill.asMono())
                 .onErrorResume(e -> Mono.empty())
-                .doFinally(signal -> registry.unregister(session));
+                .doFinally(signal -> {
+                    userChannels.leave(session);
+                    registry.unregister(session);
+                });
     }
 
     private void onMessage(ClientSession session, WebSocketMessage message) {

@@ -41,9 +41,11 @@ class OrderRepository {
     }
 
     private final JdbcClient jdbc;
+    private final OrderUpdates updates;
 
-    OrderRepository(JdbcClient jdbc) {
+    OrderRepository(JdbcClient jdbc, OrderUpdates updates) {
         this.jdbc = jdbc;
+        this.updates = updates;
     }
 
     /** Returns false if this (account, client order id) already exists. */
@@ -73,16 +75,19 @@ class OrderRepository {
                 .param("account", accountId).param("client", clientOrderId).query(MAPPER).optional();
     }
 
-    /** Compare-and-set status change. Returns 1 if this caller made the transition. */
+    /** Compare-and-set status change. Returns 1 if this caller made the transition, which is then pushed to the user. */
     int transition(UUID id, OrderStatus from, OrderStatus to, String rejectReason, boolean releasePending, Instant now) {
         OrderStatus.requireTransition(from, to);
-        return jdbc.sql("""
+        Optional<Order> changed = jdbc.sql("""
                         UPDATE orders SET status = :to, reject_reason = :reason, release_pending = :release,
                                           updated_at = :now
-                        WHERE id = :id AND status = :from""")
+                        WHERE id = :id AND status = :from
+                        RETURNING *""")
                 .param("to", to.name()).param("reason", rejectReason).param("release", releasePending)
                 .param("now", Timestamp.from(now)).param("id", id).param("from", from.name())
-                .update();
+                .query(MAPPER).optional();
+        changed.ifPresent(updates::changed);
+        return changed.isPresent() ? 1 : 0;
     }
 
     /** Marks the first cancel request on an open order. Returns 1 only for the first request. */
@@ -122,17 +127,17 @@ class OrderRepository {
     void applyFill(UUID id, OrderStatus from, OrderStatus to, Quantity filled, Price avgFillPrice,
                    BigDecimal fillNotional, int seq, Instant now) {
         OrderStatus.requireTransition(from, to);
-        int updated = jdbc.sql("""
+        Order changed = jdbc.sql("""
                         UPDATE orders SET status = :to, filled_qty = :filled, avg_fill_price = :avg,
                                           fill_notional = :notional, last_exec_seq = :seq, updated_at = :now
-                        WHERE id = :id AND status = :from""")
+                        WHERE id = :id AND status = :from
+                        RETURNING *""")
                 .param("to", to.name()).param("filled", filled.value()).param("avg", avgFillPrice.value())
                 .param("notional", fillNotional).param("seq", seq).param("now", Timestamp.from(now))
                 .param("id", id).param("from", from.name())
-                .update();
-        if (updated != 1) {
-            throw new IllegalStateException("Order " + id + " changed while applying a fill");
-        }
+                .query(MAPPER).optional()
+                .orElseThrow(() -> new IllegalStateException("Order " + id + " changed while applying a fill"));
+        updates.changed(changed);
     }
 
     boolean markProcessed(UUID eventId, Instant now) {

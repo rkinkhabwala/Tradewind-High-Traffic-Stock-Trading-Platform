@@ -5,6 +5,9 @@ import com.tradewind.common.kafka.KafkaTopics;
 import com.tradewind.common.kafka.Topics;
 import com.tradewind.common.outbox.OutboxRelay;
 import com.tradewind.common.outbox.OutboxWriter;
+import com.tradewind.common.userevent.UserEventPublisher;
+import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.slf4j.Logger;
@@ -12,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -30,6 +34,16 @@ class MessagingConfig {
     @Bean(destroyMethod = "close")
     Producer<String, String> kafkaProducer(@Value("${spring.kafka.bootstrap-servers}") String bootstrapServers) {
         return new KafkaProducer<>(KafkaDefaults.producer(bootstrapServers));
+    }
+
+    /** Best-effort, after-commit pushes to Redis channel user:{accountId} for stream-service. */
+    @Bean(destroyMethod = "close")
+    UserEventPublisher userEventPublisher(StringRedisTemplate redis, MeterRegistry meters) {
+        UserEventPublisher publisher = new UserEventPublisher(redis::convertAndSend);
+        FunctionCounter.builder("user.events", publisher, UserEventPublisher::published).tag("outcome", "published").register(meters);
+        FunctionCounter.builder("user.events", publisher, UserEventPublisher::dropped).tag("outcome", "dropped").register(meters);
+        FunctionCounter.builder("user.events", publisher, UserEventPublisher::failed).tag("outcome", "failed").register(meters);
+        return publisher;
     }
 
     @Bean

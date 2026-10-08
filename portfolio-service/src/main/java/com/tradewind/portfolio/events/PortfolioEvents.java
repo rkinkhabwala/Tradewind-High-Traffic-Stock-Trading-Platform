@@ -7,6 +7,7 @@ import com.tradewind.common.money.Money;
 import com.tradewind.common.money.Quantity;
 import com.tradewind.common.outbox.OutboxWriter;
 import com.tradewind.common.portfolio.PortfolioUpdated;
+import com.tradewind.common.userevent.UserEventPublisher;
 import com.tradewind.portfolio.ledger.LedgerAccountKey;
 import com.tradewind.portfolio.ledger.LedgerAmounts;
 import com.tradewind.portfolio.ledger.LedgerService;
@@ -19,19 +20,30 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.util.UUID;
 
-/** Writes PortfolioUpdated to the outbox in the same transaction as the ledger change it describes. */
+/**
+ * Writes PortfolioUpdated to the outbox in the same transaction as the ledger change it describes, and pushes the
+ * same snapshot to the account's sockets after commit ({@code {"type":"portfolio",...}}, best effort).
+ */
 @Component
 public class PortfolioEvents {
+
+    /** Amounts in integer cents; buying power is available cash (reserved cash is committed to open buys). */
+    record PortfolioMessage(String type, String reason, long cashCents, long cashReservedCents, long buyingPowerCents,
+                            String symbol, Quantity positionQty, java.time.Instant occurredAt) {
+    }
 
     private final LedgerService ledger;
     private final PositionRepository positions;
     private final OutboxWriter outbox;
+    private final UserEventPublisher userEvents;
     private final Clock clock;
 
-    PortfolioEvents(LedgerService ledger, PositionRepository positions, OutboxWriter outbox, Clock clock) {
+    PortfolioEvents(LedgerService ledger, PositionRepository positions, OutboxWriter outbox,
+                    UserEventPublisher userEvents, Clock clock) {
         this.ledger = ledger;
         this.positions = positions;
         this.outbox = outbox;
+        this.userEvents = userEvents;
         this.clock = clock;
     }
 
@@ -45,5 +57,7 @@ public class PortfolioEvents {
                 positionQty, clock.instant());
         outbox.append(Topics.LEDGER_EVENTS, accountId.toString(),
                 EventEnvelope.of(EventTypes.PORTFOLIO_UPDATED, PortfolioUpdated.VERSION, accountId.toString(), event, clock));
+        userEvents.publishAfterCommit(accountId, new PortfolioMessage("portfolio", reason, cash.cents(),
+                reserved.cents(), cash.cents(), symbol, positionQty, event.occurredAt()));
     }
 }

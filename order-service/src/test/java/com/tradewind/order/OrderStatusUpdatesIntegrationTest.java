@@ -32,6 +32,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -53,6 +54,8 @@ class OrderStatusUpdatesIntegrationTest {
     FakeReservations reservations;
     @Autowired
     TestInfrastructure.TestClock clock;
+    @Autowired
+    org.springframework.data.redis.connection.RedisConnectionFactory redisConnections;
 
     private KafkaProducer<String, String> producer;
     private UUID account;
@@ -150,5 +153,79 @@ class OrderStatusUpdatesIntegrationTest {
             assertThat(order(collared)).containsEntry("status", "CANCELED").containsEntry("rejectReason", "COLLAR_EXCEEDED");
             assertThat(order(expiring)).containsEntry("status", "EXPIRED");
         });
+    }
+
+    /** Subscribes to the account's Redis channel, as stream-service does, for the duration of a test. */
+    static final class UserChannel implements AutoCloseable {
+        final List<Map<?, ?>> messages = new java.util.concurrent.CopyOnWriteArrayList<>();
+        private final org.springframework.data.redis.listener.RedisMessageListenerContainer container =
+                new org.springframework.data.redis.listener.RedisMessageListenerContainer();
+
+        UserChannel(org.springframework.data.redis.connection.RedisConnectionFactory redis, UUID account) {
+            container.setConnectionFactory(redis);
+            container.addMessageListener((message, pattern) -> messages.add(
+                            EventJson.newMapper().convertValue(parse(message.getBody()), Map.class)),
+                    new org.springframework.data.redis.listener.ChannelTopic("user:" + account));
+            container.afterPropertiesSet();
+            container.start();
+        }
+
+        private static com.fasterxml.jackson.databind.JsonNode parse(byte[] body) {
+            try {
+                return EventJson.newMapper().readTree(body);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        List<Object> field(String type, String key) {
+            return messages.stream().filter(m -> type.equals(m.get("type"))).<Object>map(m -> m.get(key)).toList();
+        }
+
+        @Override
+        public void close() throws Exception {
+            container.destroy();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> statuses(UserChannel channel) {
+        return channel.field("order", "order").stream().map(o -> (String) ((Map<String, Object>) o).get("status")).toList();
+    }
+
+    @Test
+    void everyStatusChangeIsPushedToTheAccountChannelOnceAfterCommit() throws Exception {
+        try (UserChannel channel = new UserChannel(redisConnections, account)) {
+            UUID id = placeLimitBuy("push-1", "10");
+            await().atMost(Duration.ofSeconds(5)).until(() -> statuses(channel).equals(List.of("ACCEPTED")));
+
+            send(fill(id, 1, "3", "199.97", "3", "7"));
+            EventEnvelope<ExecutionReported> last = fill(id, 2, "7", "199.98", "10", "0");
+            send(last);
+            send(last);     // redelivery changes nothing, so nothing is pushed
+
+            await().atMost(Duration.ofSeconds(20)).until(() -> statuses(channel).size() == 3);
+            Thread.sleep(500);
+            assertThat(statuses(channel)).containsExactly("ACCEPTED", "PARTIALLY_FILLED", "FILLED");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> filled = (Map<String, Object>) channel.field("order", "order").getLast();
+            assertThat(filled).containsEntry("id", id.toString()).containsEntry("filledQty", "10.000000")
+                    .containsEntry("avgFillPrice", "199.9770");
+            assertThat(filled).isEqualTo(order(id));            // the same view GET /api/orders/{id} returns
+        }
+    }
+
+    @Test
+    void aRejectionIsPushedToo() throws Exception {
+        reservations.mode = FakeReservations.Mode.INSUFFICIENT;
+        try (UserChannel channel = new UserChannel(redisConnections, account)) {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("X-Account-Id", account.toString());
+            headers.set("Idempotency-Key", "push-reject");
+            http.postForEntity("/api/orders", new HttpEntity<>(Map.of("symbol", "AAPL", "side", "BUY",
+                    "type", "MARKET", "qty", "1"), headers), Map.class);
+            await().atMost(Duration.ofSeconds(5)).until(() -> statuses(channel).equals(List.of("REJECTED")));
+        }
     }
 }
