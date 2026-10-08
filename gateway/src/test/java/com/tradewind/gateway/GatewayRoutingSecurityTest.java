@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class GatewayRoutingSecurityTest {
 
     private static final String ISSUER = "tradewind-account";
-    private static final RSAKey SIGNING_KEY = generateKey();
+    static final RSAKey SIGNING_KEY = generateKey();
     private static final RSAKey FOREIGN_KEY = generateKey();
     private static final StubDownstream DOWNSTREAM = startDownstream();
 
@@ -46,7 +46,8 @@ class GatewayRoutingSecurityTest {
         registry.add("MARKETDATA_SERVICE_URL", DOWNSTREAM::baseUrl);
         registry.add("ORDER_SERVICE_URL", DOWNSTREAM::baseUrl);
         registry.add("PORTFOLIO_SERVICE_URL", DOWNSTREAM::baseUrl);
-        registry.add("STREAM_SERVICE_URL", DOWNSTREAM::baseUrl);
+        registry.add("tradewind.stream.discovery.host", () -> "localhost");
+        registry.add("tradewind.stream.discovery.port", DOWNSTREAM::port);
         registry.add("tradewind.ws.ticket-ttl", () -> "2s");
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
@@ -227,11 +228,11 @@ class GatewayRoutingSecurityTest {
         web.get().uri("/ws?ticket=" + ticket).exchange().expectStatus().isUnauthorized();
     }
 
-    private static String validToken(String userId, String accountId) {
+    static String validToken(String userId, String accountId) {
         return token(SIGNING_KEY, ISSUER, userId, accountId, null);
     }
 
-    private static String token(RSAKey key, String issuer, String userId, String accountId, Instant expiresAt) {
+    static String token(RSAKey key, String issuer, String userId, String accountId, Instant expiresAt) {
         Instant now = Instant.now();
         Instant expiry = expiresAt != null ? expiresAt : now.plus(15, ChronoUnit.MINUTES);
         JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()

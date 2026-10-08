@@ -25,6 +25,10 @@ final class StubDownstream {
         server.start();
     }
 
+    int port() {
+        return server.getAddress().getPort();
+    }
+
     String baseUrl() {
         return "http://localhost:" + server.getAddress().getPort();
     }

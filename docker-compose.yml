@@ -29,7 +29,6 @@ x-java-env: &java-env
   MARKETDATA_SERVICE_URL: http://marketdata-service:8082
   ORDER_SERVICE_URL: http://order-service:8083
   PORTFOLIO_SERVICE_URL: http://portfolio-service:8085
-  STREAM_SERVICE_URL: http://stream-service:8086
   MARKET_CLOCK_MODE: ${MARKET_CLOCK_MODE:-FAST}
   MARKET_CLOCK_SPEED: ${MARKET_CLOCK_SPEED:-1}
   MARKET_CLOCK_SIM_START: ${MARKET_CLOCK_SIM_START:-2026-01-05T09:29:00-05:00}
@@ -242,8 +241,9 @@ services:
       retries: 12
       start_period: 40s
 
-  # Not published on the host: clients reach it only through the gateway's /ws route (ticket auth), and
-  # milestone n scales it to several instances.
+  # Not published on the host: clients reach it only through the gateway's /ws route (ticket auth).
+  # Scale with `docker compose up -d --scale stream-service=3`; the gateway finds every instance through Docker's
+  # DNS, health-checks them every 2s and spreads new connections round-robin.
   stream-service:
     <<: *java-service
     build:
@@ -285,6 +285,7 @@ services:
       <<: *java-env
       ORDER_RATE_LIMIT_PER_SECOND: ${ORDER_RATE_LIMIT_PER_SECOND:-10}
       ORDER_RATE_LIMIT_BURST: ${ORDER_RATE_LIMIT_BURST:-20}
+      STREAM_SERVICE_HOST: stream-service
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
       interval: 10s

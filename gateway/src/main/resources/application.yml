@@ -52,12 +52,25 @@ spring:
               predicates:
                 - Path=/api/portfolio/**,/api/activity/**
             # WebSocket upgrade; authenticated by WsTicketFilter (one-time ticket from POST /api/ws/ticket).
+            # Round-robin over the healthy stream-service instances (gateway.stream.StreamInstances).
             - id: stream
-              uri: ${STREAM_SERVICE_URL:http://localhost:8086}
+              uri: lb://stream-service
               predicates:
                 - Path=/ws
 
+    loadbalancer:
+      # StreamInstances already refreshes every 2s; a cached list would hide removed instances for 35s.
+      cache:
+        enabled: false
+
 tradewind:
+  stream:
+    discovery:
+      # Docker's DNS resolves the service name to every scaled container.
+      host: ${STREAM_SERVICE_HOST:localhost}
+      port: ${STREAM_SERVICE_PORT:8086}
+      refresh-interval: ${STREAM_DISCOVERY_INTERVAL:2s}
+      health-timeout: 1s
   ws:
     ticket-ttl: ${WS_TICKET_TTL:30s}
   jwt:
