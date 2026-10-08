@@ -78,6 +78,20 @@ tradewind:
     jwk-set-uri: ${ACCOUNT_SERVICE_URL:http://localhost:8081}/.well-known/jwks.json
 
 management:
+  metrics:
+    # Every series carries the service name; histograms let Prometheus/Grafana compute percentiles.
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        spring.cloud.gateway.requests: true
+      minimum-expected-value:
+        http.server.requests: 1ms
+        spring.cloud.gateway.requests: 1ms
+      maximum-expected-value:
+        http.server.requests: 10s
+        spring.cloud.gateway.requests: 10s
   endpoints:
     web:
       exposure:

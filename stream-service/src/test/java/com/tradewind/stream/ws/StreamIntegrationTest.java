@@ -45,6 +45,8 @@ class StreamIntegrationTest {
     @Autowired
     @Qualifier("ticks")
     HealthIndicator tickConsumer;
+    @Autowired
+    io.micrometer.core.instrument.MeterRegistry meters;
 
     @BeforeEach
     void setUp() {
@@ -93,6 +95,7 @@ class StreamIntegrationTest {
             assertThat(quote.path("bid").asText()).isEqualTo("99.9900");
             assertThat(quote.path("prevClose").asText()).isEqualTo("99.0000");
             assertThat(quote.path("ts").asText()).isEqualTo("2026-01-05T15:00:00Z");
+            assertThat(quote.has("publishedAt")).isFalse();                // stored quote: no publish time
         }
     }
 
@@ -107,6 +110,10 @@ class StreamIntegrationTest {
             JsonNode quote = tickUntilReceived(bbb, "BBB", "50.00");
             assertThat(quote.path("last").asText()).isEqualTo("50.0000");
             assertThat(quote.has("prevClose")).isFalse();
+            // Wall-clock publish time of the tick, for tick-to-client latency; measured server-side too.
+            assertThat(java.time.Duration.between(java.time.Instant.parse(quote.path("publishedAt").asText()),
+                    java.time.Instant.now())).isBetween(java.time.Duration.ZERO, java.time.Duration.ofSeconds(5));
+            assertThat(meters.get("stream.tick.to.client").timer().count()).isPositive();
             assertThat(ccc.collect(Duration.ofMillis(500))).noneMatch(WsClient.quoteFor("BBB"));
         }
     }

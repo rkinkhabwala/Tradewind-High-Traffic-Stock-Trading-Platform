@@ -2,6 +2,8 @@ package com.tradewind.portfolio.ledger;
 
 import com.tradewind.portfolio.ledger.LedgerExceptions.LedgerContentionException;
 import com.tradewind.portfolio.ledger.LedgerExceptions.OptimisticConflictException;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DuplicateKeyException;
@@ -24,10 +26,17 @@ public class LedgerTransactions {
 
     private final TransactionTemplate transactions;
     private final int maxAttempts;
+    private final Counter conflicts;
+    private final Counter gaveUp;
 
-    LedgerTransactions(TransactionTemplate transactions, @Value("${tradewind.ledger.max-attempts:20}") int maxAttempts) {
+    LedgerTransactions(TransactionTemplate transactions, @Value("${tradewind.ledger.max-attempts:20}") int maxAttempts,
+                       MeterRegistry meters) {
         this.transactions = transactions;
         this.maxAttempts = maxAttempts;
+        this.conflicts = Counter.builder("ledger.conflicts")
+                .description("Optimistic-lock conflicts retried (contended accounts)").register(meters);
+        this.gaveUp = Counter.builder("ledger.gave_up")
+                .description("Ledger transactions abandoned after max attempts (answered 503)").register(meters);
     }
 
     public <T> T execute(Supplier<T> work) {
@@ -42,10 +51,12 @@ public class LedgerTransactions {
                 return result;
             } catch (OptimisticConflictException | ConcurrencyFailureException | DuplicateKeyException e) {
                 // ConcurrencyFailureException covers deadlocks Postgres resolves by aborting one transaction.
+                conflicts.increment();
                 backoff(attempt);
             }
         }
         log.warn("Ledger transaction gave up after {} optimistic-lock conflicts", maxAttempts);
+        gaveUp.increment();
         throw new LedgerContentionException();
     }
 

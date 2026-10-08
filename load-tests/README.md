@@ -13,6 +13,10 @@ scripts/load.sh check                        # correctness check only
 `scripts/load.sh <Simulation>` exits non-zero if the simulation's assertions fail **or** the correctness check
 fails. Reports: `load-tests/target.nosync/gatling/<simulation>-<timestamp>/index.html`, console output next to them.
 
+Restarting services leaves the JVMs cold: the first minute of load is much slower, and slow reservation calls can
+open order-service's circuit breaker (orders then fail fast as RESERVATION_TIMEOUT, by design). Warm up with a short
+run before measuring.
+
 ## Settings
 
 System properties `-Dload.<key>=<value>` (or environment variables, e.g. `LOAD_SIM_USERS`):

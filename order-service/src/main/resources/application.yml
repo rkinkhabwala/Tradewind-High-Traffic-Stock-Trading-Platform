@@ -56,6 +56,17 @@ tradewind:
     batch-size: 500
 
 management:
+  metrics:
+    # Every series carries the service name; histograms let Prometheus/Grafana compute percentiles.
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      minimum-expected-value:
+        http.server.requests: 1ms
+      maximum-expected-value:
+        http.server.requests: 10s
   endpoints:
     web:
       exposure:

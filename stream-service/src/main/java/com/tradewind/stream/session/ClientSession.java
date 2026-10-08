@@ -53,9 +53,13 @@ public final class ClientSession {
     private final Set<String> symbols = ConcurrentHashMap.newKeySet();
     private final Flux<String> outbound;
 
+    /** A quote waiting to be sent, with the wall-clock time its tick was published (0 for snapshots). */
+    private record Outgoing(String json, long publishedAtMillis) {
+    }
+
     // Guarded by this.
-    private final Map<String, String> pending = new HashMap<>();
-    private final LinkedHashMap<String, String> ready = new LinkedHashMap<>();
+    private final Map<String, Outgoing> pending = new HashMap<>();
+    private final LinkedHashMap<String, Outgoing> ready = new LinkedHashMap<>();
     private final ArrayDeque<String> queue = new ArrayDeque<>();
     private final Set<String> liveSeen = new HashSet<>();
     private boolean flushScheduled;
@@ -130,14 +134,18 @@ public final class ClientSession {
         return removed;
     }
 
-    /** A live quote (pre-serialized, shared by all sessions). Called from the tick consumer thread. */
     public void offerQuote(String symbol, String json) {
+        offerQuote(symbol, json, 0);
+    }
+
+    /** A live quote (pre-serialized, shared by all sessions). Called from the tick consumer thread. */
+    public void offerQuote(String symbol, String json, long publishedAtMillis) {
         synchronized (this) {
             if (closing.get() || !symbols.contains(symbol)) {
                 return;
             }
             liveSeen.add(symbol);
-            if (pending.put(symbol, json) != null) {
+            if (pending.put(symbol, new Outgoing(json, publishedAtMillis)) != null) {
                 metrics.conflated.increment();
             }
             if (flushScheduled) {
@@ -158,7 +166,7 @@ public final class ClientSession {
             if (closing.get() || !symbols.contains(symbol) || liveSeen.contains(symbol)) {
                 return;
             }
-            ready.putIfAbsent(symbol, json);
+            ready.putIfAbsent(symbol, new Outgoing(json, 0));
         }
         drain();
     }
@@ -228,7 +236,7 @@ public final class ClientSession {
         synchronized (this) {
             flushScheduled = false;
             lastFlushAt = now();
-            for (Map.Entry<String, String> e : pending.entrySet()) {
+            for (Map.Entry<String, Outgoing> e : pending.entrySet()) {
                 if (ready.put(e.getKey(), e.getValue()) != null) {
                     metrics.staleDropped.increment();
                 }
@@ -247,11 +255,12 @@ public final class ClientSession {
         int missed = 1;
         do {
             while (s.requestedFromDownstream() > 0 && !s.isCancelled() && !closing.get()) {
-                String next = poll();
+                Outgoing next = poll();
                 if (next == null) {
                     break;
                 }
-                s.next(next);
+                s.next(next.json());
+                metrics.recordTickToClient(next.publishedAtMillis());
                 metrics.sent.increment();
                 lastProgressAt = now();
             }
@@ -259,13 +268,17 @@ public final class ClientSession {
         } while (missed != 0);
     }
 
-    private synchronized String poll() {
-        String next = queue.poll();
-        if (next == null && !ready.isEmpty()) {
-            Iterator<Map.Entry<String, String>> it = ready.entrySet().iterator();
-            next = it.next().getValue();
-            it.remove();
+    private synchronized Outgoing poll() {
+        String message = queue.poll();
+        if (message != null) {
+            return new Outgoing(message, 0);
         }
+        if (ready.isEmpty()) {
+            return null;
+        }
+        Iterator<Map.Entry<String, Outgoing>> it = ready.entrySet().iterator();
+        Outgoing next = it.next().getValue();
+        it.remove();
         return next;
     }
 

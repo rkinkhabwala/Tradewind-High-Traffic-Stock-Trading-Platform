@@ -107,6 +107,24 @@ services:
         limits:
           memory: 256m
 
+  # Kafka consumer-group lag for Prometheus/Grafana. Pinned and pulled like every image.
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.10.0
+    command: ["--kafka.server=kafka:19092", "--kafka.version=3.9.0"]
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:9308/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+
   prometheus:
     image: prom/prometheus:v3.15.0
     ports:

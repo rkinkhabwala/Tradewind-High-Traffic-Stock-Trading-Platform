@@ -55,6 +55,8 @@ class OrderStatusUpdatesIntegrationTest {
     @Autowired
     TestInfrastructure.TestClock clock;
     @Autowired
+    io.micrometer.core.instrument.MeterRegistry meters;
+    @Autowired
     org.springframework.data.redis.connection.RedisConnectionFactory redisConnections;
 
     private KafkaProducer<String, String> producer;
@@ -117,6 +119,8 @@ class OrderStatusUpdatesIntegrationTest {
             assertThat(order(id)).containsEntry("avgFillPrice", "199.9700");
         });
 
+        double filledBefore = meters.get("orders.status").tag("status", "FILLED").counter().count();
+        long limitFills = meters.get("orders.fill.latency").tag("type", "LIMIT").timer().count();
         EventEnvelope<ExecutionReported> last = fill(id, 2, "7", "199.98", "10", "0");
         send(last);
         send(last);     // redelivery is ignored
@@ -125,6 +129,10 @@ class OrderStatusUpdatesIntegrationTest {
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
                 assertThat(order(id)).containsEntry("status", "FILLED").containsEntry("filledQty", "10.000000")
                         .containsEntry("avgFillPrice", "199.9770"));
+        // Metrics for the dashboards: one FILLED status change, one order-to-fill sample (a limit order).
+        assertThat(meters.get("orders.status").tag("status", "FILLED").counter().count()).isEqualTo(filledBefore + 1);
+        assertThat(meters.get("orders.fill.latency").tag("type", "LIMIT").timer().count()).isEqualTo(limitFills + 1);
+        assertThat(meters.get("orders.status").tag("status", "ACCEPTED").counter().count()).isPositive();
     }
 
     @Test

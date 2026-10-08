@@ -38,6 +38,7 @@ class RestReservationClient implements ReservationClient {
     private final ObjectMapper objectMapper;
     private final CircuitBreaker circuitBreaker;
     private final Bulkhead bulkhead;
+    private final MeterRegistry meters;
 
     RestReservationClient(RestClient.Builder builder, PortfolioClientProperties properties, ObjectMapper objectMapper,
                           MeterRegistry meters) {
@@ -47,6 +48,7 @@ class RestReservationClient implements ReservationClient {
         this.client = builder.baseUrl(properties.url()).requestFactory(requestFactory)
                 .requestInterceptor(new RequestIdPropagatingInterceptor()).build();
         this.objectMapper = objectMapper;
+        this.meters = meters;
 
         CircuitBreakerRegistry breakers = CircuitBreakerRegistry.of(CircuitBreakerConfig.custom()
                 .slidingWindowSize(20)
@@ -96,7 +98,28 @@ class RestReservationClient implements ReservationClient {
                 }));
     }
 
+    /** Timed as {@code orders.reservation.duration{outcome}}: the synchronous hop on the order path. */
     private Outcome reserve(Map<String, Object> body) {
+        io.micrometer.core.instrument.Timer.Sample sample = io.micrometer.core.instrument.Timer.start(meters);
+        String outcome = "unavailable";
+        try {
+            Outcome result = callReserve(body);
+            outcome = switch (result) {
+                case Reserved r -> "reserved";
+                case Insufficient i -> "insufficient";
+                case AlreadyReleased a -> "released";
+            };
+            return result;
+        } finally {
+            sample.stop(io.micrometer.core.instrument.Timer.builder("orders.reservation.duration").tag("outcome", outcome)
+                    .publishPercentileHistogram()
+                    .minimumExpectedValue(java.time.Duration.ofMillis(1))
+                    .maximumExpectedValue(java.time.Duration.ofSeconds(10))
+                    .register(meters));
+        }
+    }
+
+    private Outcome callReserve(Map<String, Object> body) {
         return protect(() -> client.post().uri("/internal/reservations").body(body)
                 .exchange((request, response) -> {
                     int status = response.getStatusCode().value();

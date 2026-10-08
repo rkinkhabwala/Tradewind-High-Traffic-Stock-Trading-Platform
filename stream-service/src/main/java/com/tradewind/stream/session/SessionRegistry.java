@@ -66,10 +66,11 @@ public class SessionRegistry implements SmartLifecycle {
         return subscribers != null && !subscribers.isEmpty();
     }
 
-    public void publishQuote(String symbol, String json) {
+    /** {@code publishedAtMillis}: wall-clock publish time of the tick, for the tick-to-client latency metric. */
+    public void publishQuote(String symbol, String json, long publishedAtMillis) {
         Set<ClientSession> subscribers = bySymbol.get(symbol);
         if (subscribers != null) {
-            subscribers.forEach(session -> session.offerQuote(symbol, json));
+            subscribers.forEach(session -> session.offerQuote(symbol, json, publishedAtMillis));
         }
     }
 

@@ -9,11 +9,18 @@ scrape_configs:
           - gateway:8080
           - account-service:8081
           - marketdata-service:8082
-          - order-service:8083
           - execution-service:8084
           - portfolio-service:8085
 
-  # One target per stream-service instance (docker compose --scale), found through Docker's DNS.
+  # Scaled services (docker compose --scale): one target per container, found through Docker's DNS.
+  - job_name: order-service
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: [order-service]
+        type: A
+        port: 8083
+        refresh_interval: 10s
+
   - job_name: stream-service
     metrics_path: /actuator/prometheus
     dns_sd_configs:
@@ -21,3 +28,8 @@ scrape_configs:
         type: A
         port: 8086
         refresh_interval: 10s
+
+  # Consumer-group lag per group/topic/partition (spec Phase 3 dashboards).
+  - job_name: kafka
+    static_configs:
+      - targets: [kafka-exporter:9308]

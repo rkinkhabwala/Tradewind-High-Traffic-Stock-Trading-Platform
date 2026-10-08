@@ -138,7 +138,7 @@ class TickConsumer implements SmartLifecycle, HealthIndicator {
                 return;
             }
             QuoteTick tick = EventJson.convert(raw.payload(), QuoteTick.class);
-            sessions.publishQuote(tick.symbol(), QuoteMessages.live(tick));
+            sessions.publishQuote(tick.symbol(), QuoteMessages.live(tick, raw.occurredAt()), raw.occurredAt().toEpochMilli());
         } catch (RuntimeException e) {
             malformed.increment();
             log.debug("Skipping malformed tick: {}", e.toString());

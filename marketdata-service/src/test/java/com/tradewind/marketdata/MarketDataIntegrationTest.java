@@ -84,22 +84,34 @@ class MarketDataIntegrationTest {
             await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(admin.describeTopics(Set.of("quotes.ticks"))
                     .allTopicNames().get().get("quotes.ticks").partitions()).hasSize(12));
         }
+        // A steady-state sample from every partition: the first records of a subscription come in whole batches
+        // from a few partitions, which says nothing about the mix of symbols.
         List<ConsumerRecord<String, String>> records = new ArrayList<>();
         try (KafkaConsumer<String, String> consumer =
                      new KafkaConsumer<>(KafkaDefaults.consumer(kafkaContainer.getBootstrapServers(), "test-" + System.nanoTime()))) {
-            consumer.subscribe(List.of("quotes.ticks"));
-            await().atMost(Duration.ofSeconds(15)).until(() -> {
+            List<org.apache.kafka.common.TopicPartition> partitions = consumer.partitionsFor("quotes.ticks").stream()
+                    .map(p -> new org.apache.kafka.common.TopicPartition(p.topic(), p.partition())).toList();
+            consumer.assign(partitions);
+            consumer.seekToEnd(partitions);
+            partitions.forEach(consumer::position);
+            long until = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+            while (System.nanoTime() < until) {
                 consumer.poll(Duration.ofMillis(200)).forEach(records::add);
-                return records.size() >= 50;
-            });
+            }
         }
+        assertThat(records).hasSizeGreaterThan(200);
         ConsumerRecord<String, String> record = records.getFirst();
         EventEnvelope<QuoteTick> event = EventJson.read(record.value(), QuoteTick.class);
         assertThat(event.eventType()).isEqualTo(EventTypes.QUOTE_TICK);
         assertThat(event.key()).isEqualTo(record.key()).isEqualTo(event.payload().symbol());
-        // Hot symbol mode: GME ticks ~100x/s, far more than anything else.
-        long gme = records.stream().filter(r -> r.key().equals("GME")).count();
-        assertThat(gme).isGreaterThan(records.size() / 10);
+        // Hot symbol mode: GME ticks ~100x/s, far more than anything else (others 1-2/s here). Compared per symbol:
+        // GME's share of ALL ticks is only ~12% with 499 other symbols, too close to any fixed share to assert on.
+        Map<String, Long> perSymbol = records.stream()
+                .collect(java.util.stream.Collectors.groupingBy(ConsumerRecord::key, java.util.stream.Collectors.counting()));
+        long gme = perSymbol.getOrDefault("GME", 0L);
+        long busiestOther = perSymbol.entrySet().stream().filter(e -> !e.getKey().equals("GME"))
+                .mapToLong(Map.Entry::getValue).max().orElse(0);
+        assertThat(gme).isGreaterThan(10 * Math.max(1, busiestOther));
     }
 
     @Test
