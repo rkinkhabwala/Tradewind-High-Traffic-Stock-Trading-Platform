@@ -26,7 +26,7 @@ spring:
             - id: account
               uri: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
               predicates:
-                - Path=/api/account/**
+                - Path=/api/account/**,/api/watchlists/**
             - id: marketdata
               uri: ${MARKETDATA_SERVICE_URL:http://localhost:8082}
               predicates:
@@ -51,8 +51,15 @@ spring:
               uri: ${PORTFOLIO_SERVICE_URL:http://localhost:8085}
               predicates:
                 - Path=/api/portfolio/**,/api/activity/**
+            # WebSocket upgrade; authenticated by WsTicketFilter (one-time ticket from POST /api/ws/ticket).
+            - id: stream
+              uri: ${STREAM_SERVICE_URL:http://localhost:8086}
+              predicates:
+                - Path=/ws
 
 tradewind:
+  ws:
+    ticket-ttl: ${WS_TICKET_TTL:30s}
   jwt:
     issuer: ${JWT_ISSUER:tradewind-account}
     jwk-set-uri: ${ACCOUNT_SERVICE_URL:http://localhost:8081}/.well-known/jwks.json

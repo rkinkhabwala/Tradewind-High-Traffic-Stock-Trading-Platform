@@ -37,6 +37,8 @@ class SecurityConfig {
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers("/internal/**").denyAll()
                         .pathMatchers("/api/auth/**").permitAll()
+                        // Authenticated by its one-time ticket in WsTicketFilter instead of a bearer JWT.
+                        .pathMatchers("/ws").permitAll()
                         .pathMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))

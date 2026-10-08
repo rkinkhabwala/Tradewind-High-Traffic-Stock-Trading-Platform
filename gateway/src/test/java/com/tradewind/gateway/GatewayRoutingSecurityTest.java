@@ -23,6 +23,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,6 +46,8 @@ class GatewayRoutingSecurityTest {
         registry.add("MARKETDATA_SERVICE_URL", DOWNSTREAM::baseUrl);
         registry.add("ORDER_SERVICE_URL", DOWNSTREAM::baseUrl);
         registry.add("PORTFOLIO_SERVICE_URL", DOWNSTREAM::baseUrl);
+        registry.add("STREAM_SERVICE_URL", DOWNSTREAM::baseUrl);
+        registry.add("tradewind.ws.ticket-ttl", () -> "2s");
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
     }
@@ -115,7 +118,7 @@ class GatewayRoutingSecurityTest {
     void routesEachPrefixToItsService() {
         String token = validToken(UUID.randomUUID().toString(), UUID.randomUUID().toString());
         for (String path : new String[]{"/api/account/deposits", "/api/quotes", "/api/symbols/AAPL", "/api/search",
-                "/api/orders/123", "/api/activity"}) {
+                "/api/orders/123", "/api/activity", "/api/watchlists", "/api/portfolio/history"}) {
             web.get().uri(path).headers(h -> h.setBearerAuth(token)).exchange()
                     .expectStatus().isOk()
                     .expectBody().jsonPath("$.path").isEqualTo(path);
@@ -172,6 +175,56 @@ class GatewayRoutingSecurityTest {
         String otherUser = validToken(UUID.randomUUID().toString(), UUID.randomUUID().toString());
         web.post().uri("/api/orders").headers(h -> h.setBearerAuth(otherUser)).exchange().expectStatus().isOk();
         web.get().uri("/api/orders").headers(h -> h.setBearerAuth(limitedUser)).exchange().expectStatus().isOk();
+    }
+
+    // ---- WebSocket tickets -----------------------------------------------------------------------------------
+
+    private String ticketFor(String userId, String accountId) {
+        Map<?, ?> body = web.post().uri("/api/ws/ticket").headers(h -> h.setBearerAuth(validToken(userId, accountId)))
+                .exchange().expectStatus().isOk().expectBody(Map.class).returnResult().getResponseBody();
+        assertThat(body.get("expiresInSeconds")).isEqualTo(2);
+        return (String) body.get("ticket");
+    }
+
+    @Test
+    void ticketsRequireAJwt() {
+        web.post().uri("/api/ws/ticket").exchange().expectStatus().isUnauthorized();
+    }
+
+    @Test
+    void aTicketAuthenticatesWsExactlyOnceAndNeverReachesTheService() {
+        String userId = UUID.randomUUID().toString();
+        String accountId = UUID.randomUUID().toString();
+        String ticket = ticketFor(userId, accountId);
+
+        web.get().uri("/ws?ticket=" + ticket + "&client=web")
+                .header("X-User-Id", "spoofed").header("X-Account-Id", "spoofed")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.path").isEqualTo("/ws")
+                .jsonPath("$.query").isEqualTo("client=web")     // ticket stripped, other params kept
+                .jsonPath("$.userId").isEqualTo(userId)
+                .jsonPath("$.accountId").isEqualTo(accountId);
+
+        web.get().uri("/ws?ticket=" + ticket).exchange().expectStatus().isUnauthorized();   // single use
+    }
+
+    @Test
+    void wsWithoutAValidTicketIsRejected() {
+        web.get().uri("/ws").exchange().expectStatus().isUnauthorized();
+        web.get().uri("/ws?ticket=forged").exchange().expectStatus().isUnauthorized();
+        // A JWT alone does not open the socket: browsers cannot send one, and it must not appear in URLs.
+        web.get().uri("/ws").headers(h -> h.setBearerAuth(validToken(UUID.randomUUID().toString(),
+                UUID.randomUUID().toString()))).exchange().expectStatus().isUnauthorized();
+    }
+
+    @Test
+    void ticketsExpire() throws Exception {
+        String ticket = ticketFor(UUID.randomUUID().toString(), UUID.randomUUID().toString());
+        Thread.sleep(2_500);
+
+        web.get().uri("/ws?ticket=" + ticket).exchange().expectStatus().isUnauthorized();
     }
 
     private static String validToken(String userId, String accountId) {

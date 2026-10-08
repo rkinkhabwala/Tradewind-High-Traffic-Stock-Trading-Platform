@@ -21,7 +21,4 @@ public final class AuthDtos {
 
     public record LoginRequest(@NotBlank String email, @NotBlank String password) {
     }
-
-    public record RefreshRequest(@NotBlank String refreshToken) {
-    }
 }

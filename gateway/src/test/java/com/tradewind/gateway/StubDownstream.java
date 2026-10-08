@@ -35,8 +35,8 @@ final class StubDownstream {
 
     private static String echo(HttpExchange exchange) {
         var headers = exchange.getRequestHeaders();
-        return "{\"method\":\"%s\",\"path\":\"%s\",\"userId\":%s,\"accountId\":%s,\"requestId\":%s}".formatted(
-                exchange.getRequestMethod(), exchange.getRequestURI().getPath(),
+        return "{\"method\":\"%s\",\"path\":\"%s\",\"query\":%s,\"userId\":%s,\"accountId\":%s,\"requestId\":%s}".formatted(
+                exchange.getRequestMethod(), exchange.getRequestURI().getPath(), quoted(exchange.getRequestURI().getRawQuery()),
                 quoted(headers.getFirst("X-User-Id")), quoted(headers.getFirst("X-Account-Id")),
                 quoted(headers.getFirst("X-Request-Id")));
     }

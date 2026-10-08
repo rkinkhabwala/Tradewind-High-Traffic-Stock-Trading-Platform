@@ -11,6 +11,7 @@ import com.tradewind.portfolio.ledger.LedgerService;
 import com.tradewind.portfolio.position.Position;
 import com.tradewind.portfolio.position.PositionRepository;
 import com.tradewind.portfolio.quote.QuoteReader;
+import com.tradewind.portfolio.snapshot.PortfolioHistory;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -54,18 +55,23 @@ class PortfolioController {
     record ActivityPage(List<ActivityView> items, String nextCursor) {
     }
 
+    record HistoryView(String range, List<PortfolioHistory.Point> points) {
+    }
+
     private final LedgerService ledger;
     private final PositionRepository positions;
     private final ActivityRepository activity;
     private final QuoteReader quotes;
+    private final PortfolioHistory history;
     private final TransactionTemplate readOnly;
 
     PortfolioController(LedgerService ledger, PositionRepository positions, ActivityRepository activity,
-                        QuoteReader quotes, TransactionTemplate transactions) {
+                        QuoteReader quotes, PortfolioHistory history, TransactionTemplate transactions) {
         this.ledger = ledger;
         this.positions = positions;
         this.activity = activity;
         this.quotes = quotes;
+        this.history = history;
         this.readOnly = new TransactionTemplate(transactions.getTransactionManager());
         this.readOnly.setReadOnly(true);
     }
@@ -107,6 +113,14 @@ class PortfolioController {
         return new PortfolioView(account, cash, reserved, cash, views,
                 live ? positionsValue : null, live ? cash + reserved + positionsValue : null,
                 live ? dayChange : null, live);
+    }
+
+    /** Portfolio value series from snapshots (5-simulated-minute resolution, downsampled for long ranges). */
+    @GetMapping("/api/portfolio/history")
+    HistoryView history(@RequestHeader(value = Identity.ACCOUNT_ID_HEADER, required = false) UUID accountId,
+                        @RequestParam(defaultValue = "1D") String range) {
+        PortfolioHistory.Range parsed = PortfolioHistory.Range.parse(range);
+        return new HistoryView(parsed.code, history.history(Identity.require(accountId), parsed));
     }
 
     @GetMapping("/api/activity")

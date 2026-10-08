@@ -33,6 +33,14 @@ spring:
       accept-float-as-int: false
 
 tradewind:
+  clock:
+    mode: ${MARKET_CLOCK_MODE:FAST}
+    speed: ${MARKET_CLOCK_SPEED:1}
+    sim-start: ${MARKET_CLOCK_SIM_START:2026-01-05T09:29:00-05:00}
+    real-epoch: ${MARKET_CLOCK_REAL_EPOCH:}
+  snapshots:
+    # How often to check whether a new 5-simulated-minute snapshot bucket has started.
+    check-interval: ${SNAPSHOT_CHECK_INTERVAL:2s}
   portfolio:
     consumer-group: ${PORTFOLIO_CONSUMER_GROUP:portfolio-service}
   outbox:

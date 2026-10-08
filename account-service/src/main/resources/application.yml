@@ -36,6 +36,9 @@ tradewind:
     refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:7d}
     # PKCS#8 PEM RSA private key. Empty = generate an ephemeral key at startup (local dev only).
     private-key: ${JWT_PRIVATE_KEY:}
+  auth:
+    # Refresh-token cookie Secure flag; browsers accept Secure cookies on http://localhost.
+    cookie-secure: ${AUTH_COOKIE_SECURE:true}
   funding:
     portfolio-url: ${PORTFOLIO_SERVICE_URL:http://localhost:8085}
     connect-timeout: 1s
